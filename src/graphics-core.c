@@ -40,10 +40,10 @@
 "}\n"
 
 #define SHADER_FRAGMENT_SRC \
-"uniform vec4 color;\n" \
-"uniform vec4 mask;\n" \
+"uniform mediump vec4 color;\n" \
+"uniform mediump vec4 mask;\n" \
 "uniform sampler2D tex;\n" \
-"varying vec2 texpos;\n" \
+"varying lowp vec2 texpos;\n" \
 "void main()\n" \
 "{\n" \
 "  gl_FragColor = texture2D(tex, texpos) * mask + color;\n" \

@@ -3,6 +3,10 @@ Augmented reality navigation
 
 This application uses data from GPS and inertial sensors to render a navigational overlay to captured video.
 
+LICENSING
+---------
+Use with GNU/GPL v3 license
+
 DEPENDENCIES
 ------------
 Kernel
@@ -13,7 +17,12 @@ Libraries
  * freetype2
  * EGL
  * GLESv2
- * X11 (optional, use -DX11BUILD compiler flag to enable X11 support)
+ * X11 (optional)
+
+> To enable X11 support use
+> ~~~
+> make X11BUILD=1
+> ~~~    
 
 HARDWARE
 --------
@@ -23,6 +32,8 @@ Peripherals:
 
  * Inertial sensors (I2C)
   - InvenSense ITG-3200 gyroscope
+  - AKM AK8975 compass
+  - Bosh BMA-150 accelerometer
 
  * GPS sensors (TTY)
   - Any NMEA 0183 compatible device with serial interface
@@ -43,3 +54,10 @@ Target platforms:
  * Raspberry Pi
   - BCM2835 ARM1176JZF-S
   - <http://www.raspberrypi.org/>
+
+DOCUMENTATION
+-------------
+Documentation will be generated from sources with
+~~~
+make doc
+~~~

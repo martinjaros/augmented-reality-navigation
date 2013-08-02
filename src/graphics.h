@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief       Graphics utilities
+ * @brief       Graphics library
  * @author      Martin Jaros <xjaros32@stud.feec.vutbr.cz>
  *
  * @section LICENSE
@@ -16,27 +16,28 @@
  * <http://www.gnu.org/licenses>
  *
  * @section DESCRIPTION
- * This is an interface for graphics rendering using OpenGL ES 2.0 acceleration.
- * To enable X11 binding define X11BUILD symbol.
+ * This is OpenGL ES 2.0 graphics library.
  *
  * Example:
  * @code
- * int main()
+ * int main ()
  * {
- *     graphics_t *g = graphics_init("FreeSans.ttf", 24);
+ *     graphics_t *g = graphics_init();
+ *     atlas_t *atlas = graphics_atlas_create("FreeSans.ttf", 20);
  *
- *     uint8_t white[] = { 255, 255, 255, 255 };
- *     uint8_t black[] = { 0, 0, 0, 255 };
+ *     drawable_t *label = graphics_label_create(g);
+ *     graphics_label_set_text(g, label, atlas, "Hello World");
  *
- *     while(1)
+ *     for(;;)
  *     {
- *         graphics_clear(g, white);
- *         graphics_draw_text(g, "Hello World", 0, 24, black);
- *         if(!graphics_flush(g)) break;
+ *         graphics_draw(g, label, 10, 10)
+ *         graphics_flush(g, NULL);
  *     }
  *
- *     graphics_free(g);
- *     return 0;
+ *     graphics_drawable_free(label);
+ *     graphics_atlas_free(atlas);
+ *
+ *     return(0);
  * }
  * @endcode
  */
@@ -47,65 +48,109 @@
 #include <stdint.h>
 
 /**
- * @brief Graphics internal state
+ * @brief Internal graphics state
  */
 typedef struct _graphics graphics_t;
 
 /**
- * @brief Initializes OpenGL and loads FreeType font
- * @param font_name Path to font file to load
- * @param font_height Size of the font
- * @return NULL on error
+ * @brief Atlas of characters
  */
-graphics_t *graphics_init(const char *font_name, int font_height);
+typedef struct _atlas atlas_t;
 
 /**
- * @brief Returns drawing surface dimension
- * @param g Internal state as returned by `graphics_init()`
- * @param[out] width Pointer where to place surface width in pixels
- * @param[out] height Pointer where to place surface height in pixels
+ * @brief Drawable object
  */
-void graphics_get_dimensions(graphics_t *g, uint32_t *width, uint32_t *height);
+typedef struct _drawable drawable_t;
 
 /**
- * @brief Clears a surface with specified color
- * @param g Internal state as returned by `graphics_init()`
- * @param color RGBA color used as background
+ * @brief Initializes graphics
+ * @return Internal graphics state
  */
-void graphics_clear(graphics_t *g, const uint8_t color[4]);
+graphics_t *graphics_init();
 
 /**
- * @brief Draws the image at the specified location
- * @param g Internal state as returned by `graphics_init()`
- * @param img Pointer to the image pixel data
- * @param width Image width in pixels
- * @param height Image height in pixels
- * @param x Horizontal coordinate
- * @param y Vertical coordinate
- * @note Image uses RGBA32 format
+ * @brief Flushes framebuffer
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @param color If not NULL, this is a RBGA color used to clear the screen
+ * @return 1 on success, 0 on failure
  */
-void graphics_draw_image(graphics_t *g, const void *img, uint32_t width, uint32_t height, uint32_t x, uint32_t y);
+int graphics_flush(graphics_t *g, const uint8_t *color);
 
 /**
- * @brief Draws text at the specified location
- * @param g Internal state as returned by `graphics_init()`
- * @param str NULL terminated string to draw
- * @param color RGBA color to use for drawing
+ * @brief Draws verticies
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @param d Drawable object
  * @param x Horizontal coordinate
  * @param y Vertical coordinate
  */
-void graphics_draw_text(graphics_t *g, const char *str, uint8_t color[4], uint32_t x, uint32_t y);
+void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y);
 
 /**
- * @brief Flushes framebuffer to the display
- * @param g Internal state as returned by `graphics_init()`
- * @return 0 if cannot display the framebuffer, 1 otherwise
+ * @brief Creates font atlas
+ * @param font Font file path to use
+ * @param size Font size
+ * @return Atlas structure
  */
-int graphics_flush(graphics_t *g);
+atlas_t *graphics_atlas_create(const char *font, uint32_t size);
 
 /**
- * @brief Frees all allocated resources
- * @param g Internal state as returned by `graphics_init()`
+ * @brief Creates drawable label
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @return Drawable object
+ */
+drawable_t *graphics_label_create(graphics_t *g);
+
+/**
+ * @brief Creates drawable image
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @param width Texture width
+ * @param height Texture height
+ * @return Drawable object
+ */
+drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height);
+
+/**
+ * @brief Updates label text
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @param label Label drawable to update
+ * @param atlas Character atlas
+ * @param text NULL terminated string to use
+ */
+void graphics_label_set_text(graphics_t *g, drawable_t *label, atlas_t *atlas, const char *text);
+
+
+/**
+ * @brief Updates label color
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @param label Label drawable to update
+ * @param color Font color in RGBA format
+ */
+void graphics_label_set_color(graphics_t *g, drawable_t *label, uint8_t color[4]);
+
+/**
+ * @brief Updates image bitmap
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @param image Image drawable to update
+ * @param buffer Pixel data buffer in RGBx format (width * height * 32)
+ */
+void graphics_image_set_bitmap(graphics_t *g, drawable_t *image, const void *buffer);
+
+/**
+ * @brief Releases resources of the specified object
+ * @param d Drawable object to free
+ */
+void graphics_drawable_free(drawable_t *d);
+
+/**
+ * @brief Releases resources of the specified atlas
+ * @param atlas Atlas object to free
+ */
+void graphics_atlas_free(atlas_t *atlas);
+
+/**
+ * @brief Releases graphics resources
+ * @param g Internal graphics state as returned by `graphics_init()`
+ * @note Does not release nested objects, use `graphics_atlas_free()` and `graphics_drawable_free()`
  */
 void graphics_free(graphics_t *g);
 

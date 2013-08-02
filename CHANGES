@@ -1,0 +1,13 @@
+0.2
+ * graphics resources are properly released
+ * added BMA-150 accelerometer driver
+ * added AK8975 compass driver
+ * sophisticated makefile
+ * main.c split to a new application module
+ * global configuration moved to config.h
+ * merged graphics framework, new graphics API
+ * all geometry is stored in vertex buffer objects
+ * added NMEA 0183 RMC sentence, added global labels (altitude, speed, track angle) 
+
+0.1
+ * initial release

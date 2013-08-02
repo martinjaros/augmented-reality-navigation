@@ -69,6 +69,16 @@ struct posinfo
      * @brief Altitude in meters
      */
     double alt;
+
+    /**
+     * @brief Speed in kilometers per hour
+     */
+    double spd;
+
+    /**
+     * @brief Track angle in degrees
+     */
+    double trk;
 };
 
 /**

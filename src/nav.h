@@ -52,6 +52,7 @@
 
 #include "gps.h"
 #include "imu.h"
+#include "graphics.h"
 
 /**
  * @brief Waypoint iterator
@@ -66,7 +67,7 @@ struct wptinfo
     /**
      * @brief Label to display
      */
-    char *label;
+    drawable_t *label;
 
     /**
      * @brief Horizontal projection angle in radians
@@ -82,9 +83,12 @@ struct wptinfo
 /**
  * @brief Loads waypoint list from file and creates iterator
  * @param filename Name of the file to load eg. "waypoints.txt"
+ * @param g Graphics state used for loading characters
+ * @param atlas Character atlas
+ * @param color Label color (RGBA)
  * @return Iterator for the loaded waypoints or NULL on error
  */
-wpt_iter *nav_load(const char *filename);
+wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t color[4]);
 
 /**
  * @brief Resets the iterator to start from begin

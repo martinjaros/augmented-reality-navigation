@@ -34,8 +34,8 @@
 /* Waypoint */
 struct _wpt
 {
-    char *label;
-    struct posinfo pos;
+    drawable_t *label;
+    double lat, lon, alt;
 };
 
 /* Chained waypoint list */
@@ -63,20 +63,22 @@ static void cleanup(struct _wpt_set *wpts)
     int i;
     for(i = 0; i < wpts->num; i++)
     {
-        // Free string
-        if(wpts->wpts[i].label != NULL) free(wpts->wpts[i].label);
+        // Free label
+        if(wpts->wpts[i].label != NULL) graphics_drawable_free(wpts->wpts[i].label);
     }
 
     // Free structure
     free(wpts);
 }
 
-wpt_iter *nav_load(const char *filename)
+wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t color[4])
 {
     FILE *f;
     wpt_iter *iter;
 
     assert(filename != NULL);
+    assert(g != NULL);
+    assert(atlas != NULL);
 
     // Open file
     if((f = fopen(filename, "r")) == NULL) return NULL;
@@ -110,7 +112,8 @@ wpt_iter *nav_load(const char *filename)
         if((*str == '\n') || (*str == '#')) continue;
 
         // Parse
-        if(sscanf(str, "%lf, %lf, %lf, %m[^\n]", &wpt->pos.lat, &wpt->pos.lon, &wpt->pos.alt, &wpt->label) != 4)
+        char *label;
+        if(sscanf(str, "%lf, %lf, %lf, %m[^\n]", &wpt->lat, &wpt->lon, &wpt->alt, &label) != 4)
         {
             // Cleanup on error
             fclose(f);
@@ -118,6 +121,12 @@ wpt_iter *nav_load(const char *filename)
             free(iter);
             return NULL;
         }
+
+        // Create label
+        wpt->label = graphics_label_create(g);
+        graphics_label_set_text(g, wpt->label, atlas, label);
+        graphics_label_set_color(g, wpt->label, color);
+        free(label);
 
         // Increment counter
         set->num++;
@@ -154,9 +163,9 @@ int nav_iter(wpt_iter *iter, const struct attdinfo *attd, const struct posinfo *
     struct _wpt *wpt = &iter->current->wpts[iter->index++];
 
     // Calculate differentials
-    double dalt = wpt->pos.alt - pos->alt;
-    double dlat = wpt->pos.lat - pos->lat;
-    double dlon = cos(pos->lat) * (wpt->pos.lon - pos->lon);
+    double dalt = wpt->alt - pos->alt;
+    double dlat = wpt->lat - pos->lat;
+    double dlon = cos(pos->lat) * (wpt->lon - pos->lon);
 
     // Calculate distance
     double dist = sqrt(dlat*dlat + dlon*dlon) * EARTH_RADIUS;

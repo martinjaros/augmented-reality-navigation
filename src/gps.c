@@ -70,13 +70,24 @@ int gps_read(int fd, struct posinfo *pos)
     ssize_t len = read(fd, buf, BUFSZ);
     buf[len - 1] = 0;
 
+    double lat, lon, alt, spd, trk;
+
     // Parse GGA sentence
-    double lat, lon, alt;
-    if(sscanf(buf, "$GPGGA,%*d,%lf,N,%lf,E,1,%*d,%*f,%lf,M,%*f,M,,*%*s", &lat, &lon, &alt) == 3)
+    if(sscanf(buf, "$GPGGA,%*d,%lf,N,%lf,E,1,%*d,%*f,%lf,M,%*s", &lat, &lon, &alt) == 3)
     {
         pos->lat = lat / 180 * M_PI;
         pos->lon = lon / 180 * M_PI;
         pos->alt = alt;
+        return 1;
+    }
+
+    // Parse RMC sentence
+    if(sscanf(buf, "$GPRMC,%*d,A,%lf,N,%lf,E,%lf,%lf,%*s", &lat, &lon, &spd, &trk) == 4)
+    {
+        pos->lat = lat / 180 * M_PI;
+        pos->lon = lon / 180 * M_PI;
+        pos->spd = spd * 1.852; // knots to km/h
+        pos->trk = trk;
         return 1;
     }
 

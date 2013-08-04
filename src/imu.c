@@ -28,6 +28,7 @@
 #include <linux/i2c.h>
 #include <linux/i2c-dev.h>
 
+#include "debug.h"
 #include "imu.h"
 
 #ifndef M_PI
@@ -132,16 +133,26 @@ static void matrix_rotate(double m[9], double rx, double ry, double rz)
 
 imu_t *imu_open(const char *devname)
 {
+    DEBUG("imu_open()");
     imu_t *imu;
 
     assert(devname != NULL);
 
     // Open device
     int fd;
-    if((fd = open(devname, O_RDWR | O_NONBLOCK)) == -1) return NULL;
+    if((fd = open(devname, O_RDWR | O_NONBLOCK)) == -1)
+    {
+        WARN("Failed to open `%s`", devname);
+        return NULL;
+    }
 
     // Initialize state structure
     imu = malloc(sizeof(struct _imu));
+    if(imu == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
     imu->fd = fd;
     imu->steps = -GYRO_CALIB_SKIP;
     imu->calib[0] = 0;
@@ -176,6 +187,7 @@ imu_t *imu_open(const char *devname)
     // Write data
     if(ioctl(fd, I2C_RDWR, &msgset) == -1)
     {
+        WARN("I2C write fail");
         close(fd);
         free(imu);
         return NULL;
@@ -186,10 +198,15 @@ imu_t *imu_open(const char *devname)
 
 int imu_timer_create()
 {
+    DEBUG("imu_timer_create()");
     int timerfd;
 
     // Create timer
-    if((timerfd = timerfd_create(CLOCK_REALTIME, O_NONBLOCK)) == -1) return timerfd;
+    if((timerfd = timerfd_create(CLOCK_REALTIME, O_NONBLOCK)) == -1)
+    {
+        WARN("Failed to create timer");
+        return timerfd;
+    }
 
     struct itimerspec timer;
     timer.it_interval.tv_sec = 0;
@@ -200,6 +217,7 @@ int imu_timer_create()
     // Set timer
     if((timerfd_settime(timerfd, 0, &timer, NULL)) == -1)
     {
+        WARN("Failed to set timer");
         close(timerfd);
         return -1;
     }
@@ -209,6 +227,7 @@ int imu_timer_create()
 
 int imu_read(imu_t *imu, struct attdinfo *attd)
 {
+    DEBUG("imu_read()");
     assert(imu != NULL);
     assert(attd != NULL);
 
@@ -254,7 +273,11 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
     msgset.nmsgs = sizeof(msg) / sizeof(struct i2c_msg);
 
     // Read data
-    if(ioctl(imu->fd, I2C_RDWR, &msgset) == -1) return 0;
+    if(ioctl(imu->fd, I2C_RDWR, &msgset) == -1)
+    {
+        WARN("I2C read fail");
+        return 0;
+    }
 
     // Skip initial measurements
     if(imu->steps++ < 0) return 0;
@@ -288,6 +311,8 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
         vector_normalize(&imu->matrix[0]);
         vector_normalize(&imu->matrix[6]);
         matrix_orthogonalize(imu->matrix);
+
+        INFO("IMU calibration finished");
     }
     else
     {
@@ -299,6 +324,7 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
             (short)(mag_buf[4] | mag_buf[5] << 8)
         };
         vector_normalize(mag);
+        INFO("Compass readings [%lf, %lf, %lf]", mag[0], mag[1], mag[2]);
 
         // Get orientation vector from accelerometer
         uint16_t ax = (uint16_t)mag_buf[0] >> 6 | (uint16_t)mag_buf[1] << 2;
@@ -311,6 +337,7 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
             (int16_t)(az > 0x1FF ? az - 0x400 : az)
         };
         vector_normalize(acc);
+        INFO("Accelerometer readings [%lf, %lf, %lf]", acc[0], acc[1], acc[2]);
 
         // Calculate weighted average
         imu->matrix[0] = 0.5 * imu->matrix[0] + 0.5 * mag[0];
@@ -329,20 +356,24 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
     double ry = ((short)(gyro_buf[2] << 8 | gyro_buf[3]) - imu->calib[1]) * GYRO_SCALE;
     double rz = ((short)(gyro_buf[4] << 8 | gyro_buf[5]) - imu->calib[2]) * GYRO_SCALE;
     matrix_rotate(imu->matrix, rx, ry, rz);
+    INFO("Gyroscope readings [%lf, %lf, %lf]", rx, ry, rz);
 
     // Get absolute angles
     attd->roll = atan2(imu->matrix[5], imu->matrix[8]);
     attd->pitch = asin(imu->matrix[2]);
     attd->yaw = atan2(imu->matrix[1], imu->matrix[0]);
 
+    INFO("Attitude roll = %lf, pitch = %lf, yaw = %lf", attd->roll, attd->pitch, attd->yaw);
+
     return 1;
 }
 
 void imu_close(imu_t *imu, int fd)
 {
+    DEBUG("imu_close()");
     assert(imu != NULL);
 
-    close(fd);
+    if(fd > -1) close(fd);
     close(imu->fd);
     free(imu);
 }

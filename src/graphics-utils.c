@@ -16,20 +16,22 @@
  */
 
 #include <stdlib.h>
-#include <stdio.h>
 #include <string.h>
 #include <assert.h>
 
+#include "debug.h"
 #include "graphics-utils.h"
 
 GLuint shader_compile(GLenum type, const GLchar *source, GLint length)
 {
-    /* Compile shader */
+    DEBUG("shader_compile()");
+
+    // Compile shader
     GLuint shader = glCreateShader(type);
     glShaderSource(shader, 1, &source, &length);
     glCompileShader(shader);
 
-    /* Get compilation status */
+    // Get compilation status
     GLint status;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &status);
     if(!status)
@@ -39,7 +41,7 @@ GLuint shader_compile(GLenum type, const GLchar *source, GLint length)
 
         char* str = malloc(len);
         glGetShaderInfoLog(shader, len, NULL, str);
-        fprintf(stderr, "%s\n", str);
+        WARN("Shader compiler error:\n%s", str);
         free(str);
 
         return 0;
@@ -50,13 +52,15 @@ GLuint shader_compile(GLenum type, const GLchar *source, GLint length)
 
 GLuint shader_link(GLuint vertex, GLuint fragment)
 {
-    /* Attach and link shaders */
+    DEBUG("shader_link()");
+
+    // Attach and link shaders
     GLuint program = glCreateProgram();
     glAttachShader(program, vertex);
     glAttachShader(program, fragment);
     glLinkProgram(program);
 
-    /* Get link status */
+    // Get link status
     GLint status;
     glGetProgramiv(program, GL_LINK_STATUS, &status);
     if(!status)
@@ -66,7 +70,7 @@ GLuint shader_link(GLuint vertex, GLuint fragment)
 
         char* str = malloc(len);
         glGetProgramInfoLog(program, len, NULL, str);
-        fprintf(stderr, "%s\n", str);
+        WARN("Shader linker error:%s", str);
         free(str);
 
         return 0;
@@ -77,22 +81,28 @@ GLuint shader_link(GLuint vertex, GLuint fragment)
 
 EGLNativeWindowType window_create(EGLNativeDisplayType *display)
 {
+    DEBUG("window_create()");
 #ifdef X11BUILD
 
-    /* Open display */
+    // Open display
     *display = XOpenDisplay(NULL);
     if(!*display)
     {
-        fprintf(stderr, "Unable to open X display\n");
+        WARN("Failed to open X display");
         return 0;
     }
 
-    /* Create window */
+    // Create window
     unsigned long color = BlackPixel(*display, 0);
     Window root = RootWindow(*display, 0);
     Window window = XCreateSimpleWindow(*display, root, 0, 0, 100, 100, 0, color, color);
     Atom state = XInternAtom(*display, "_NET_WM_STATE", False);
     Atom fullscreen = XInternAtom(*display, "_NET_WM_STATE_FULLSCREEN", False);
+    if(!window)
+    {
+        WARN("Failed to create X11 window");
+        return 0;
+    }
 
     XEvent event;
     memset(&event, 0, sizeof(event));
@@ -119,6 +129,7 @@ EGLNativeWindowType window_create(EGLNativeDisplayType *display)
 
 void window_destroy(EGLNativeDisplayType display, EGLNativeWindowType window)
 {
+    DEBUG("window_destroy()");
 #ifdef X11BUILD
 
     assert(display != NULL);
@@ -132,46 +143,47 @@ void window_destroy(EGLNativeDisplayType display, EGLNativeWindowType window)
 
 EGLSurface surface_create(EGLDisplay display, EGLNativeWindowType window, EGLContext *context)
 {
+    DEBUG("surface_create()");
     assert(context != NULL);
 
-    /* Initialize EGL */
+    // Initialize EGL
     if(!eglInitialize(display, NULL, NULL) || !eglBindAPI(EGL_OPENGL_ES_API))
     {
-        fprintf(stderr, "EGL initialization failed\n");
+        WARN("Failed to initialize EGL");
         return NULL;
     }
 
-    /* Configure EGL */
+    // Configure EGL
     EGLConfig config;
     EGLint num, config_attr[5] = { EGL_SURFACE_TYPE, EGL_WINDOW_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT, EGL_NONE };
     if(!eglChooseConfig(display, config_attr, &config, 1, &num) || (num != 1))
     {
-        fprintf(stderr, "EGL configuration failed\n");
+        WARN("Failed to configure EGL");
         return NULL;
     }
 
-    /* Create window surface */
+    // Create window surface
     EGLSurface surface = eglCreateWindowSurface(display, config, window, NULL);
     if(!surface)
     {
-        fprintf(stderr, "Cannot create window surface\n");
+        WARN("EGL failed to create window surface");
         return NULL;
     }
 
-    /* Create OpenGL context */
+    // Create OpenGL context
     EGLint context_attr[] = { EGL_CONTEXT_CLIENT_VERSION, 2, EGL_NONE };
     *context = eglCreateContext(display, config, NULL, context_attr);
     if(!*context)
     {
-        fprintf(stderr, "Cannot create OpenGL context\n");
+        WARN("EGL failed to create OpenGL context\n");
         eglDestroySurface(display, surface);
         return NULL;
     }
 
-    /* Use OpenGL context */
+    // Use OpenGL context
     if(!eglMakeCurrent(display, surface, surface, *context))
     {
-        fprintf(stderr, "Cannot use OpenGL context\n");
+        WARN("EGL failed to use OpenGL context\n");
         eglDestroyContext(display, *context);
         eglDestroySurface(display, surface);
         return NULL;

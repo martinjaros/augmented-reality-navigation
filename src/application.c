@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <math.h>
 
+#include "debug.h"
 #include "application.h"
 #include "graphics.h"
 #include "capture.h"
@@ -59,25 +60,48 @@ struct _application
     struct attdinfo attd;
 };
 
+/* Resource cleanup helper function */
+static void cleanup(application_t *app)
+{
+    if(app->videofd) capture_stop(app->videofd, app->buffers);
+    if(app->imu) imu_close(app->imu, app->imufd);
+    if(app->gpsfd) gps_close(app->gpsfd);
+    if(app->wpts) nav_free(app->wpts);
+    if(app->image) graphics_drawable_free(app->image);
+    if(app->label_alt) graphics_drawable_free(app->label_alt);
+    if(app->label_spd) graphics_drawable_free(app->label_spd);
+    if(app->label_trk) graphics_drawable_free(app->label_trk);
+    if(app->atlas) graphics_atlas_free(app->atlas);
+    if(app->graphics) graphics_free(app->graphics);
+    free(app);
+}
+
 application_t *application_init(struct config *cfg)
 {
+    DEBUG("application_init()");
     assert(cfg != NULL);
 
     // Allocate structure
     application_t *app = calloc(1, sizeof(struct _application));
-    assert(app != NULL);
+    if(app == NULL)
+    {
+        ERROR("Cannot allocate memory");
+        return NULL;
+    }
 
     // Initialize graphics
     if((app->graphics = graphics_init()) == NULL)
     {
-        fprintf(stderr, "Cannot initialize graphics\n");
+        ERROR("Cannot initialize graphics");
+        cleanup(app);
         return NULL;
     }
 
     // Create font atlas
     if((app->atlas = graphics_atlas_create(cfg->fontname, FONT_SIZE)) == NULL)
     {
-        fprintf(stderr, "Cannot load %s\n", cfg->fontname);
+        ERROR("Cannot create font atlas");
+        cleanup(app);
         return NULL;
     }
 
@@ -85,29 +109,33 @@ application_t *application_init(struct config *cfg)
     uint8_t color[] = FONT_COLOR;
     if((app->wpts = nav_load(cfg->wptf, app->graphics, app->atlas, color)) == NULL)
     {
-        fprintf(stderr, "Cannot load %s\n", cfg->wptf);
+        ERROR("Cannot load waypoints");
+        cleanup(app);
         return NULL;
     }
 
     // Open GPS
     if((app->gpsfd = gps_open(cfg->gpsdev)) < 0)
     {
-        fprintf(stderr, "Cannot open %s\n", cfg->gpsdev);
+        ERROR("Cannot initialize GPS device");
+        cleanup(app);
         return NULL;
     }
 
     // Open IMU
     app->imu = imu_open(cfg->imudev);
-    if((app->imufd = imu_timer_create(app->imu)) < 0)
+    if((app->imu == NULL) || ((app->imufd = imu_timer_create(app->imu)) < 0))
     {
-        fprintf(stderr, "Cannot open %s\n", cfg->imudev);
+        ERROR("Cannot initialize IMU device");
+        cleanup(app);
         return NULL;
     }
 
     // Start video capture
     if((app->videofd = capture_start(cfg->videodev, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FORMAT, VIDEO_INTERLACE, &app->buffers)) < 0)
     {
-        fprintf(stderr, "Cannot open %s\n", cfg->videodev);
+        ERROR("Cannot start video capture");
+        cleanup(app);
         return NULL;
     }
 
@@ -116,6 +144,12 @@ application_t *application_init(struct config *cfg)
     app->label_alt = graphics_label_create(app->graphics);
     app->label_spd = graphics_label_create(app->graphics);
     app->label_trk = graphics_label_create(app->graphics);
+    if(!app->image || !app->label_alt || !app->label_spd || !app->label_trk)
+    {
+        ERROR("Cannot create graphics widgets");
+        cleanup(app);
+        return NULL;
+    }
 
     // Calculate highest file descriptor + 1
     app->nfds = MAX(app->gpsfd, app->nfds);
@@ -128,6 +162,7 @@ application_t *application_init(struct config *cfg)
 
 void application_mainloop(application_t *app)
 {
+    DEBUG("application_mainloop()");
     assert(app != NULL);
 
     while(1)
@@ -202,10 +237,8 @@ void application_mainloop(application_t *app)
 
 void application_free(application_t *app)
 {
-    capture_stop(app->videofd, app->buffers);
-    imu_close(app->imu, app->imufd);
-    gps_close(app->gpsfd);
-    nav_free(app->wpts);
-    graphics_free(app->graphics);
-    free(app);
+    DEBUG("application_free()");
+    assert(app != NULL);
+
+    cleanup(app);
 }

@@ -19,11 +19,6 @@ Libraries
  * GLESv2
  * X11 (optional)
 
-> To enable X11 support use
-> ~~~
-> make X11BUILD=1
-> ~~~    
-
 HARDWARE
 --------
 Peripherals:
@@ -55,9 +50,24 @@ Target platforms:
   - BCM2835 ARM1176JZF-S
   - <http://www.raspberrypi.org/>
 
-DOCUMENTATION
+COMPILATION
 -------------
-Documentation will be generated from sources with
+To enable X11 support use
+~~~
+make X11BUILD=1
+~~~
+To change trace level use
+~~~
+make TRACE_LEVEL=number
+~~~
+Levels are
+ * 0 - disabled
+ * 1 - error
+ * 2 - warning (default)
+ * 3 - info
+ * 4 - debug
+
+To generate documentation use
 ~~~
 make doc
 ~~~

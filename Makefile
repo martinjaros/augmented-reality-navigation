@@ -8,6 +8,12 @@ ifeq ($(X11BUILD),1)
 	LIBS += -lX11
 endif
 
+ifdef TRACE_LEVEL
+	CFLAGS += -DTRACE_LEVEL=$(TRACE_LEVEL)
+else
+	CFLAGS += -DTRACE_LEVEL=2
+endif
+
 .PHONY: all clean doc
 
 all: bin/arnav

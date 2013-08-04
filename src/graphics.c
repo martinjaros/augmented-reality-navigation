@@ -21,6 +21,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#include "debug.h"
 #include "graphics.h"
 #include "graphics-utils.h"
 
@@ -76,19 +77,53 @@ struct _drawable
     GLfloat mask[4], color[4];
 };
 
+/* Resource cleanup helper function */
+static void cleanup(graphics_t *g)
+{
+    // Delete shader
+   if(g->prog) glDeleteProgram(g->prog);
+   if(g->vert) glDeleteShader(g->vert);
+   if(g->frag) glDeleteShader(g->frag);
+
+   // Release context and surface
+   if(g->surface)
+   {
+       eglMakeCurrent(g->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+       eglDestroyContext(g->display, g->context);
+       eglDestroySurface(g->display, g->surface);
+   }
+
+   // Destroy window
+   if(g->native_window) window_destroy(g->native_display, g->native_window);
+
+   free(g);
+}
+
 graphics_t *graphics_init()
 {
+    DEBUG("graphics_init()");
+
     graphics_t *g = calloc(1, sizeof(graphics_t));
+    if(g == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
 
     /* Create window */
     g->native_window = window_create(&g->native_display);
-    g->display = eglGetDisplay(g->native_display);
+    if((g->display = eglGetDisplay(g->native_display)) == NULL)
+    {
+        WARN("Failed to get display");
+        cleanup(g);
+        return NULL;
+    }
 
     /* Create surface */
     if(!(g->surface = surface_create(g->display, g->native_window, &g->context)))
     {
-        window_destroy(g->native_display, g->native_window);
-        free(g);
+        WARN("Cannot create surface");
+        cleanup(g);
         return NULL;
     }
 
@@ -97,6 +132,7 @@ graphics_t *graphics_init()
        !(g->frag = shader_compile(GL_FRAGMENT_SHADER, (GLchar*)src_shader_frag, src_shader_frag_len)) ||
        !(g->prog = shader_link(g->vert, g->frag)))
     {
+        WARN("Cannot compile shader");
         eglMakeCurrent(g->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
         eglDestroyContext(g->display, g->context);
         eglDestroySurface(g->display, g->surface);
@@ -112,6 +148,12 @@ graphics_t *graphics_init()
     g->uni_mask = glGetUniformLocation(g->prog, "mask"); // RGBA color mask
     g->uni_offset = glGetUniformLocation(g->prog, "offset"); // X, Y drawing coordinates
     g->attr_coord = glGetAttribLocation(g->prog, "coord"); // Model vertex coordinates
+    if((g->uni_tex == -1) || (g->uni_color == -1) || (g->uni_mask == -1) || (g->uni_offset == -1) || (g->attr_coord == -1))
+    {
+        WARN("Failed to get attribute locations");
+        cleanup(g);
+        return NULL;
+    }
     glEnableVertexAttribArray(g->attr_coord);
 
     /* Enable blending */
@@ -119,14 +161,29 @@ graphics_t *graphics_init()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     /* Get surface dimensions */
-    eglQuerySurface(g->display, g->surface, EGL_WIDTH, &g->width);
-    eglQuerySurface(g->display, g->surface, EGL_HEIGHT, &g->height);
+    if(!eglQuerySurface(g->display, g->surface, EGL_WIDTH, &g->width) ||
+       !eglQuerySurface(g->display, g->surface, EGL_HEIGHT, &g->height))
+    {
+        WARN("Failed to query surface");
+        cleanup(g);
+        return NULL;
+    }
+
+    // Check OpenGL errors
+    int err = glGetError();
+    if(err != GL_NO_ERROR)
+    {
+        WARN("OpenGL error %d", err);
+        cleanup(g);
+        return NULL;
+    }
 
     return g;
 }
 
 int graphics_flush(graphics_t *g, const uint8_t *color)
 {
+    DEBUG("graphics_flush()");
     assert(g != NULL);
 
     int res = eglSwapBuffers(g->display, g->surface);
@@ -137,11 +194,20 @@ int graphics_flush(graphics_t *g, const uint8_t *color)
         glClear(GL_COLOR_BUFFER_BIT);
     }
 
+    // Check OpenGL errors
+    int err = glGetError();
+    if(err != GL_NO_ERROR)
+    {
+        WARN("OpenGL error %d", err);
+        return 0;
+    }
+
     return res;
 }
 
 void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y)
 {
+    DEBUG("graphics_draw()");
     assert(g != NULL);
     assert(d != NULL);
 
@@ -169,18 +235,43 @@ void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y)
 
 atlas_t *graphics_atlas_create(const char *font, uint32_t size)
 {
+    DEBUG("graphics_atlas_create()");
     int i;
 
     assert(font != NULL);
     assert(size > 0);
 
     atlas_t *atlas = malloc(sizeof(struct _atlas));
-    assert(atlas != NULL);
+    if(atlas == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
 
     FT_Library ft;
     FT_Face face;
-    if(FT_Init_FreeType(&ft) || FT_New_Face(ft, font, 0, &face)) return NULL;
-    FT_Set_Pixel_Sizes(face, 0, size);
+    if(FT_Init_FreeType(&ft))
+    {
+        WARN("Failed to init FreeType");
+        free(atlas);
+        return NULL;
+    }
+
+    if(FT_New_Face(ft, font, 0, &face))
+    {
+        WARN("Failed to load font `%s`", font);
+        FT_Done_FreeType(ft);
+        free(atlas);
+        return NULL;
+    }
+
+    if(FT_Set_Pixel_Sizes(face, 0, size))
+    {
+        WARN("Failed to set font size");
+        FT_Done_FreeType(ft);
+        free(atlas);
+        return NULL;
+    }
 
     FT_GlyphSlot glyph = face->glyph;
     int row_width = 0, row_height = 0;
@@ -190,7 +281,13 @@ atlas_t *graphics_atlas_create(const char *font, uint32_t size)
     atlas->height = 0;
     for(i = 0; i < 96; i++)
     {
-        if(FT_Load_Char(face, i + 32, FT_LOAD_RENDER)) continue;
+        if(FT_Load_Char(face, i + 32, FT_LOAD_RENDER))
+        {
+            WARN("Failed to load character %d", i + 32);
+            FT_Done_FreeType(ft);
+            free(atlas);
+            return NULL;
+        }
 
         // Start new line if needed
         if(row_width + glyph->bitmap.width + 1 >= 1024)
@@ -224,7 +321,13 @@ atlas_t *graphics_atlas_create(const char *font, uint32_t size)
     row_height = 0;
     for(i = 0; i < 96; i++)
     {
-        if (FT_Load_Char(face, i + 32, FT_LOAD_RENDER)) continue;
+        if(FT_Load_Char(face, i + 32, FT_LOAD_RENDER))
+        {
+            WARN("Failed to load character %d", i + 32);
+            FT_Done_FreeType(ft);
+            free(atlas);
+            return NULL;
+        }
 
         // Start new line if needed
         if (offset_x + glyph->bitmap.width + 1 >= 1024)
@@ -259,10 +362,15 @@ atlas_t *graphics_atlas_create(const char *font, uint32_t size)
 
 drawable_t *graphics_label_create(graphics_t *g)
 {
+    DEBUG("graphics_label_create()");
     (void)g;
 
     drawable_t *d = malloc(sizeof(struct _drawable));
-    assert(d != NULL);
+    if(d == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
 
     d->type = DRAWABLE_LABEL;
     d->mask[0] = 0;
@@ -281,10 +389,15 @@ drawable_t *graphics_label_create(graphics_t *g)
 
 drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height)
 {
+    DEBUG("graphics_image_create()");
     assert(g != NULL);
 
     drawable_t *d = malloc(sizeof(struct _drawable));
-    assert(d != NULL);
+    if(d == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
 
     d->type = DRAWABLE_IMAGE;
     d->mask[0] = 1;
@@ -321,6 +434,7 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
 
 void graphics_label_set_text(graphics_t *g, drawable_t *d, atlas_t *atlas, const char *text)
 {
+    DEBUG("graphics_label_set_text()");
     assert(g != NULL);
     assert(d != NULL);
     assert(atlas != NULL);
@@ -393,6 +507,7 @@ void graphics_label_set_text(graphics_t *g, drawable_t *d, atlas_t *atlas, const
 
 void graphics_label_set_color(graphics_t *g, drawable_t *d, uint8_t color[4])
 {
+    DEBUG("graphics_label_set_color()");
     (void)g;
 
     assert(d != NULL);
@@ -406,6 +521,7 @@ void graphics_label_set_color(graphics_t *g, drawable_t *d, uint8_t color[4])
 
 void graphics_image_set_bitmap(graphics_t *g, drawable_t *d, const void *buffer)
 {
+    DEBUG("graphics_image_set_bitmap()");
     assert(d != NULL);
     assert(buffer != NULL);
     assert(d->type == DRAWABLE_IMAGE);
@@ -421,6 +537,7 @@ void graphics_image_set_bitmap(graphics_t *g, drawable_t *d, const void *buffer)
 
 void graphics_drawable_free(drawable_t *d)
 {
+    DEBUG("graphics_drawable_free()");
     assert(d != NULL);
 
     glDeleteBuffers(1, &d->vbo);
@@ -430,6 +547,7 @@ void graphics_drawable_free(drawable_t *d)
 
 void graphics_atlas_free(atlas_t *atlas)
 {
+    DEBUG("graphics_atlas_free()");
     assert(atlas != NULL);
 
     glDeleteTextures(1, &atlas->texture);
@@ -438,18 +556,8 @@ void graphics_atlas_free(atlas_t *atlas)
 
 void graphics_free(graphics_t *g)
 {
+    DEBUG("graphics_free()");
     assert(g != NULL);
 
-    // Delete shader
-    glDeleteProgram(g->prog);
-    glDeleteShader(g->vert);
-    glDeleteShader(g->frag);
-
-    // Release context and surface
-    eglMakeCurrent(g->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(g->display, g->context);
-    eglDestroySurface(g->display, g->surface);
-
-    // Destroy window
-    window_destroy(g->native_display, g->native_window);
+    cleanup(g);
 }

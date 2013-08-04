@@ -20,6 +20,7 @@
 #include <string.h>
 #include <getopt.h>
 
+#include "debug.h"
 #include "application.h"
 
 /* Prints command line usage */
@@ -38,6 +39,8 @@ static void usage()
 
 int main(int argc, char *argv[])
 {
+    DEBUG("main()");
+
     struct config cfg =
     {
         .videodev = VIDEODEV,
@@ -72,6 +75,9 @@ int main(int argc, char *argv[])
         }
     }
 
+    INFO("Initializing videodev='%s', gpsdev='%s', imudev='%s', wptf='%s', fontname='%s'",
+         cfg.videodev, cfg.gpsdev, cfg.imudev, cfg.wptf, cfg.fontname);
+
     // Start application
     application_t *app = application_init(&cfg);
     if(app)
@@ -80,6 +86,7 @@ int main(int argc, char *argv[])
         application_free(app);
         return EXIT_SUCCESS;
     }
+    else ERROR("Initialization failed");
 
     return EXIT_FAILURE;
 }

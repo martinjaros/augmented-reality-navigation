@@ -20,6 +20,7 @@
 #include <math.h>
 #include <assert.h>
 
+#include "debug.h"
 #include "nav.h"
 
 /* Number of waypoints per chunk */
@@ -73,6 +74,7 @@ static void cleanup(struct _wpt_set *wpts)
 
 wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t color[4])
 {
+    DEBUG("nav_load()");
     FILE *f;
     wpt_iter *iter;
 
@@ -81,15 +83,29 @@ wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t 
     assert(atlas != NULL);
 
     // Open file
-    if((f = fopen(filename, "r")) == NULL) return NULL;
+    if((f = fopen(filename, "r")) == NULL)
+    {
+        WARN("Failed to open `%s`", filename);
+        return NULL;
+    }
 
     // Allocate memory for first chunk
     struct _wpt_set *set = malloc(sizeof(struct _wpt_set));
+    if(set == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
     set->next = NULL;
     set->num = 0;
 
     // Allocate iterator and set pointer to the first chunk
     iter = malloc(sizeof(struct _wpt_iter));
+    if(iter == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
     iter->first = iter->current = set;
     iter->index = 0;
 
@@ -100,6 +116,11 @@ wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t 
         {
             // Allocate next chunk if needed
             set = set->next = malloc(sizeof(struct _wpt_set));
+            if(set == NULL)
+            {
+                WARN("Cannot allocate memory");
+                return NULL;
+            }
             set->next = NULL;
             set->num = 0;
         }
@@ -115,12 +136,17 @@ wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t 
         char *label;
         if(sscanf(str, "%lf, %lf, %lf, %m[^\n]", &wpt->lat, &wpt->lon, &wpt->alt, &label) != 4)
         {
+            WARN("Parse error");
+
             // Cleanup on error
             fclose(f);
             cleanup(iter->first);
             free(iter);
             return NULL;
         }
+
+        INFO("Parsed waypoint latitude = %lf, longitude = %lf, altitude = %lf, label = `%s`",
+              wpt->lat, wpt->lon, wpt->alt, label);
 
         // Create label
         wpt->label = graphics_label_create(g);
@@ -138,6 +164,7 @@ wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t 
 
 void nav_reset(wpt_iter *iter)
 {
+    DEBUG("nav_reset()");
     assert(iter != NULL);
 
     // Reset iterator
@@ -147,6 +174,7 @@ void nav_reset(wpt_iter *iter)
 
 int nav_iter(wpt_iter *iter, const struct attdinfo *attd, const struct posinfo *pos, struct wptinfo *res)
 {
+    DEBUG("nav_iter()");
     assert(iter != NULL);
     assert(attd != NULL);
     assert(pos != NULL);
@@ -187,6 +215,7 @@ int nav_iter(wpt_iter *iter, const struct attdinfo *attd, const struct posinfo *
 
 void nav_free(wpt_iter *iter)
 {
+    DEBUG("nav_free()");
     assert(iter != NULL);
 
     // Cleanup

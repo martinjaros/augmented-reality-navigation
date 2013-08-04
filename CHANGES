@@ -1,3 +1,7 @@
+0.3 - WIP
+ * fixed memory leaks, more error checking
+ * added debugging macros
+
 0.2
  * graphics resources are properly released
  * added BMA-150 accelerometer driver

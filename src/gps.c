@@ -23,6 +23,7 @@
 #include <termios.h>
 #include <math.h>
 
+#include "debug.h"
 #include "gps.h"
 
 #ifndef M_PI
@@ -32,17 +33,19 @@
 /* I/O Buffer size */
 #define BUFSZ    256
 
-/* Clean & return helper macro */
-#define clean_return(fd) { close(fd); return -1; }
-
 int gps_open(const char *devname)
 {
+    DEBUG("gps_open()");
     int fd;
 
     assert(devname != NULL);
 
     // Open device
-    if((fd = open(devname, O_RDONLY | O_NOCTTY | O_NONBLOCK)) == -1) return fd;
+    if((fd = open(devname, O_RDONLY | O_NOCTTY | O_NONBLOCK)) == -1)
+    {
+        WARN("Failed to open '%s'", devname);
+        return fd;
+    }
 
     struct termios tty;
     bzero(&tty, sizeof(tty));
@@ -51,17 +54,33 @@ int gps_open(const char *devname)
     tty.c_cflag = CS8 | CREAD | CLOCAL;
     tty.c_lflag = ICANON;
 
-    if(cfsetospeed(&tty, B9600) != 0) clean_return(fd);
-    if(cfsetispeed(&tty, B9600) != 0) clean_return(fd);
+    if(cfsetospeed(&tty, B9600) != 0)
+    {
+        WARN("Failed to set output baud rate");
+        close(fd);
+        return -1;
+    }
+    if(cfsetispeed(&tty, B9600) != 0)
+    {
+        WARN("Failed to set input baud rate");
+        close(fd);
+        return -1;
+    }
 
     // Set attributes
-    if(tcsetattr(fd, TCSANOW, &tty) != 0) clean_return(fd);
+    if(tcsetattr(fd, TCSANOW, &tty) != 0)
+    {
+        WARN("Failed to set attributes");
+        close(fd);
+        return -1;
+    }
 
     return fd;
 }
 
 int gps_read(int fd, struct posinfo *pos)
 {
+    DEBUG("gps_read()");
     assert(fd >= 0);
     assert(pos != NULL);
 
@@ -69,6 +88,7 @@ int gps_read(int fd, struct posinfo *pos)
     char buf[BUFSZ];
     ssize_t len = read(fd, buf, BUFSZ);
     buf[len - 1] = 0;
+    INFO("Received sentence `%s`", buf);
 
     double lat, lon, alt, spd, trk;
 
@@ -78,6 +98,7 @@ int gps_read(int fd, struct posinfo *pos)
         pos->lat = lat / 180 * M_PI;
         pos->lon = lon / 180 * M_PI;
         pos->alt = alt;
+        INFO("Parsed GGA sentence latitude = %lf, longitude = %lf, altitude = %lf", pos->lat, pos->lon, pos->alt);
         return 1;
     }
 
@@ -88,6 +109,7 @@ int gps_read(int fd, struct posinfo *pos)
         pos->lon = lon / 180 * M_PI;
         pos->spd = spd * 1.852; // knots to km/h
         pos->trk = trk;
+        INFO("Parsed RMC sentence latitude = %lf, longitude = %lf, speed = %lf, track = %lf", pos->lat, pos->lon, pos->spd, pos->trk);
         return 1;
     }
 
@@ -96,5 +118,7 @@ int gps_read(int fd, struct posinfo *pos)
 
 void gps_close(int fd)
 {
+    DEBUG("gps_close()");
+
     close(fd);
 }

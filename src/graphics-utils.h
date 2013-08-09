@@ -45,7 +45,7 @@ GLuint shader_link(GLuint vertex, GLuint fragment);
 
 /**
  * @brief Creates X11 fullscreen window
- * @param display Pointer where to output opened display
+ * @param[out] display Opened display
  * @returns Window XID
  * @note If X11 support is not enabled, returns 0
  */
@@ -63,7 +63,7 @@ void window_destroy(EGLNativeDisplayType display, EGLNativeWindowType window);
  * @brief Creates EGL surface for native window
  * @param display EGL display to use
  * @param window Native window as returned by `window_create()`
- * @param context Pointer where to output created context
+ * @param[out] context Created context
  * @returns EGL surface
  */
 EGLSurface surface_create(EGLDisplay display, EGLNativeWindowType window, EGLContext *context);

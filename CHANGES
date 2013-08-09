@@ -1,4 +1,7 @@
 0.3 - WIP
+ * unit test suite
+ * graphics fixes
+ * separated I2C drivers, driver fixes
  * fixed memory leaks, more error checking
  * added debugging macros
 

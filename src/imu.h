@@ -16,7 +16,7 @@
  * <http://www.gnu.org/licenses>
  *
  * @section DESCRIPTION
- * This is a I2C driver for ITG-3200, AK8975 and BMA-150 chips.
+ * This is an inertial measurement unit providing attitude data.
  * You should use `select()` on file descriptor returned by `imu_timer_create()`
  * to synchronize before reading.
  * @note All functions do not block

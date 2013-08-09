@@ -30,12 +30,13 @@
  *
  *     for(;;)
  *     {
- *         graphics_draw(g, label, 10, 10)
+ *         graphics_draw(g, label, 10, 10);
  *         graphics_flush(g, NULL);
  *     }
  *
  *     graphics_drawable_free(label);
  *     graphics_atlas_free(atlas);
+ *     graphics_free(g);
  *
  *     return(0);
  * }

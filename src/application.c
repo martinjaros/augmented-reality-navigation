@@ -172,6 +172,8 @@ void application_mainloop(application_t *app)
         FD_SET(app->gpsfd, &fds);
         FD_SET(app->imufd, &fds);
         FD_SET(app->videofd, &fds);
+
+        DEBUG("select()");
         select(app->nfds, &fds, NULL, NULL, NULL);
 
         // Process GPS

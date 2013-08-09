@@ -503,6 +503,9 @@ void graphics_label_set_text(graphics_t *g, drawable_t *d, atlas_t *atlas, const
     glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(array), array, GL_DYNAMIC_DRAW);
     d->num = num / 4;
+
+    // Update texture
+    d->tex = atlas->texture;
 }
 
 void graphics_label_set_color(graphics_t *g, drawable_t *d, uint8_t color[4])

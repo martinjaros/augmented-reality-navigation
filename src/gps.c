@@ -93,7 +93,7 @@ int gps_read(int fd, struct posinfo *pos)
     double lat, lon, alt, spd, trk;
 
     // Parse GGA sentence
-    if(sscanf(buf, "$GPGGA,%*d,%lf,N,%lf,E,1,%*d,%*f,%lf,M,%*s", &lat, &lon, &alt) == 3)
+    if(sscanf(buf, "$GPGGA,%*lf,%lf,N,%lf,E,1,%*d,%*f,%lf,M,%*s", &lat, &lon, &alt) == 3)
     {
         pos->lat = lat / 180 * M_PI;
         pos->lon = lon / 180 * M_PI;
@@ -103,7 +103,7 @@ int gps_read(int fd, struct posinfo *pos)
     }
 
     // Parse RMC sentence
-    if(sscanf(buf, "$GPRMC,%*d,A,%lf,N,%lf,E,%lf,%lf,%*s", &lat, &lon, &spd, &trk) == 4)
+    if(sscanf(buf, "$GPRMC,%*lf,A,%lf,N,%lf,E,%lf,%lf,%*s", &lat, &lon, &spd, &trk) == 4)
     {
         pos->lat = lat / 180 * M_PI;
         pos->lon = lon / 180 * M_PI;

@@ -17,44 +17,31 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <stdint.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
-#include <sys/ioctl.h>
 #include <sys/timerfd.h>
-#include <linux/i2c.h>
-#include <linux/i2c-dev.h>
 
 #include "debug.h"
 #include "imu.h"
+#include "imu-driver.h"
 
 #ifndef M_PI
 #define M_PI    3.14159265358979323846
 #endif
 
 /* Timer period */
-#define TIMER_ITER_MS       10
+#define TIMER_ITER_MS   10
 
-/* Device definitions for ITG-3200 */
-#define GYRO_ADDR           0x68
-#define GYRO_REG            0x1D
-#define GYRO_CONF           { 0x15, 0, (3 << 3) | 1, 0 }
-
-#define GYRO_SCALE          (2000.0 / 180.0 * M_PI) / 32767.0 / 1000.0 * TIMER_ITER_MS
+/* Number of calibration steps */
 #define GYRO_CALIB_SKIP     2
 #define GYRO_CALIB_STEPS    30
 
-/* Device definitions for AK8975 */
-#define MAG_ADDR            0x0C
-#define MAG_REG             0x03
-#define MAG_CONF            { 0x0A, 1 }
-
-/* Device definitions for BMA-150 */
-#define ACC_ADDR            0x70
-#define ACC_REG             0x02
+/* Base weights for averaging */
+#define WEIGHT_ACC  0.5
+#define WEIGHT_MAG  0.5
 
 /* IMU state structure */
 struct _imu
@@ -159,35 +146,10 @@ imu_t *imu_open(const char *devname)
     imu->calib[1] = 0;
     imu->calib[2] = 0;
 
-    unsigned char gyro_conf[] = GYRO_CONF;
-    unsigned char mag_conf[] = MAG_CONF;
-
-    struct i2c_msg msg[] =
+    // Initialize driver
+    if(!driver_init(fd))
     {
-        // Write gyroscope configuration (continuous measurement)
-        {
-            .addr = GYRO_ADDR,
-            .flags = 0,
-            .len = sizeof(gyro_conf),
-            .buf = gyro_conf
-        },
-        // Write compass configuration (single shot)
-        {
-            .addr = MAG_ADDR,
-            .flags = 0,
-            .len = sizeof(mag_conf),
-            .buf = mag_conf
-        }
-    };
-
-    struct i2c_rdwr_ioctl_data msgset;
-    msgset.msgs = msg;
-    msgset.nmsgs = sizeof(msg) / sizeof(struct i2c_msg);
-
-    // Write data
-    if(ioctl(fd, I2C_RDWR, &msgset) == -1)
-    {
-        WARN("I2C write fail");
+        WARN("Cannot initialize IMU driver");
         close(fd);
         free(imu);
         return NULL;
@@ -231,53 +193,9 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
     assert(imu != NULL);
     assert(attd != NULL);
 
-    unsigned char gyro_buf[6] = { GYRO_REG };
-    unsigned char acc_buf[6] = { ACC_REG };
-    unsigned char mag_buf[6] = { MAG_REG };
-    unsigned char mag_conf[] = MAG_CONF;
-
-    struct i2c_msg msg[] =
-    {
-        // Read gyroscope measurement
-        {
-            .addr = GYRO_ADDR,
-            .flags = I2C_M_RD,
-            .len = sizeof(gyro_buf),
-            .buf = gyro_buf
-        },
-        // Read compass measurement
-        {
-            .addr = MAG_ADDR,
-            .flags = I2C_M_RD,
-            .len = sizeof(mag_buf),
-            .buf = mag_buf
-        },
-        // Reconfigure compass (single shot)
-        {
-            .addr = MAG_ADDR,
-            .flags = 0,
-            .len = sizeof(mag_conf),
-            .buf = mag_conf
-        },
-        // Read accelerometer measurement
-        {
-            .addr = ACC_REG,
-            .flags = I2C_M_RD,
-            .len = sizeof(acc_buf),
-            .buf = acc_buf
-        }
-    };
-
-    struct i2c_rdwr_ioctl_data msgset;
-    msgset.msgs = msg;
-    msgset.nmsgs = sizeof(msg) / sizeof(struct i2c_msg);
-
-    // Read data
-    if(ioctl(imu->fd, I2C_RDWR, &msgset) == -1)
-    {
-        WARN("I2C read fail");
-        return 0;
-    }
+    // Read data from driver
+    struct driver_data data;
+    driver_read(imu->fd, &data);
 
     // Skip initial measurements
     if(imu->steps++ < 0) return 0;
@@ -285,9 +203,9 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
     // Calibration steps
     if(imu->steps++ < GYRO_CALIB_STEPS)
     {
-        imu->calib[0] += (int16_t)((uint16_t)gyro_buf[0] << 8 | (uint16_t)gyro_buf[1]);
-        imu->calib[1] += (int16_t)((uint16_t)gyro_buf[2] << 8 | (uint16_t)gyro_buf[3]);
-        imu->calib[2] += (int16_t)((uint16_t)gyro_buf[4] << 8 | (uint16_t)gyro_buf[5]);
+        imu->calib[0] += data.gyro[0];
+        imu->calib[1] += data.gyro[1];
+        imu->calib[2] += data.gyro[2];
         return 0;
     }
     else if(imu->steps++ == GYRO_CALIB_STEPS)
@@ -298,65 +216,44 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
         imu->calib[2] /= GYRO_CALIB_STEPS;
 
         // Initialize rotation matrix
-        imu->matrix[0] = (int16_t)((uint16_t)mag_buf[0] | (uint16_t)mag_buf[1] << 8);
-        imu->matrix[1] = (int16_t)((uint16_t)mag_buf[2] | (uint16_t)mag_buf[3] << 8);
-        imu->matrix[2] = (int16_t)((uint16_t)mag_buf[4] | (uint16_t)mag_buf[5] << 8);
-
-        uint16_t ax = (uint16_t)mag_buf[0] >> 6 | (uint16_t)mag_buf[1] << 2;
-        uint16_t ay = (uint16_t)mag_buf[2] >> 6 | (uint16_t)mag_buf[3] << 2;
-        uint16_t az = (uint16_t)mag_buf[4] >> 6 | (uint16_t)mag_buf[5] << 2;
-        imu->matrix[6] = (int16_t)(ax > 0x1FF ? ax - 0x400 : ax);
-        imu->matrix[7] = (int16_t)(ay > 0x1FF ? ay - 0x400 : ay);
-        imu->matrix[8] = (int16_t)(az > 0x1FF ? az - 0x400 : az);
+        imu->matrix[0] = data.mag[0];
+        imu->matrix[1] = data.mag[1];
+        imu->matrix[2] = data.mag[2];
         vector_normalize(&imu->matrix[0]);
-        vector_normalize(&imu->matrix[6]);
-        matrix_orthogonalize(imu->matrix);
 
+        imu->matrix[6] = data.acc[0];
+        imu->matrix[7] = data.acc[1];
+        imu->matrix[8] = data.acc[2];
+        vector_normalize(&imu->matrix[6]);
+
+        matrix_orthogonalize(imu->matrix);
         INFO("IMU calibration finished");
     }
     else
     {
-        // Get orientation vector from compass
-        double mag[3] =
-        {
-            (short)(mag_buf[0] | mag_buf[1] << 8),
-            (short)(mag_buf[2] | mag_buf[3] << 8),
-            (short)(mag_buf[4] | mag_buf[5] << 8)
-        };
-        vector_normalize(mag);
-        INFO("Compass readings [%lf, %lf, %lf]", mag[0], mag[1], mag[2]);
-
-        // Get orientation vector from accelerometer
-        uint16_t ax = (uint16_t)mag_buf[0] >> 6 | (uint16_t)mag_buf[1] << 2;
-        uint16_t ay = (uint16_t)mag_buf[2] >> 6 | (uint16_t)mag_buf[3] << 2;
-        uint16_t az = (uint16_t)mag_buf[4] >> 6 | (uint16_t)mag_buf[5] << 2;
-        double acc[3] =
-        {
-            (int16_t)(ax > 0x1FF ? ax - 0x400 : ax),
-            (int16_t)(ay > 0x1FF ? ay - 0x400 : ay),
-            (int16_t)(az > 0x1FF ? az - 0x400 : az)
-        };
-        vector_normalize(acc);
-        INFO("Accelerometer readings [%lf, %lf, %lf]", acc[0], acc[1], acc[2]);
+        INFO("Compass readings [%lf, %lf, %lf]", data.mag[0], data.mag[1], data.mag[2]);
+        INFO("Gyroscope readings [%lf, %lf, %lf]", data.gyro[0], data.gyro[1], data.gyro[2]);
+        INFO("Accelerometer readings [%lf, %lf, %lf]", data.acc[0], data.acc[1], data.acc[2]);
 
         // Calculate weighted average
-        imu->matrix[0] = 0.5 * imu->matrix[0] + 0.5 * mag[0];
-        imu->matrix[1] = 0.5 * imu->matrix[1] + 0.5 * mag[1];
-        imu->matrix[2] = 0.5 * imu->matrix[2] + 0.5 * mag[2];
-        imu->matrix[6] = 0.5 * imu->matrix[6] + 0.5 * acc[0];
-        imu->matrix[7] = 0.5 * imu->matrix[7] + 0.5 * acc[1];
-        imu->matrix[8] = 0.5 * imu->matrix[8] + 0.5 * acc[2];
+        vector_normalize(data.mag);
+        vector_normalize(data.acc);
+        imu->matrix[0] = (1 - WEIGHT_MAG) * imu->matrix[0] + WEIGHT_MAG * data.mag[0];
+        imu->matrix[1] = (1 - WEIGHT_MAG) * imu->matrix[1] + WEIGHT_MAG * data.mag[1];
+        imu->matrix[2] = (1 - WEIGHT_MAG) * imu->matrix[2] + WEIGHT_MAG * data.mag[2];
+        imu->matrix[6] = (1 - WEIGHT_ACC) * imu->matrix[6] + WEIGHT_ACC * data.acc[0];
+        imu->matrix[7] = (1 - WEIGHT_ACC) * imu->matrix[7] + WEIGHT_ACC * data.acc[1];
+        imu->matrix[8] = (1 - WEIGHT_ACC) * imu->matrix[8] + WEIGHT_ACC * data.acc[2];
         vector_normalize(&imu->matrix[0]);
         vector_normalize(&imu->matrix[6]);
         matrix_orthogonalize(imu->matrix);
     }
 
-    // Get displacement angles from gyroscope and rotate matrix
-    double rx = ((short)(gyro_buf[0] << 8 | gyro_buf[1]) - imu->calib[0]) * GYRO_SCALE;
-    double ry = ((short)(gyro_buf[2] << 8 | gyro_buf[3]) - imu->calib[1]) * GYRO_SCALE;
-    double rz = ((short)(gyro_buf[4] << 8 | gyro_buf[5]) - imu->calib[2]) * GYRO_SCALE;
+    // Rotate matrix
+    double rx = (data.gyro[0] - imu->calib[0]) * TIMER_ITER_MS;
+    double ry = (data.gyro[1] - imu->calib[1]) * TIMER_ITER_MS;
+    double rz = (data.gyro[2] - imu->calib[2]) * TIMER_ITER_MS;
     matrix_rotate(imu->matrix, rx, ry, rz);
-    INFO("Gyroscope readings [%lf, %lf, %lf]", rx, ry, rz);
 
     // Get absolute angles
     attd->roll = atan2(imu->matrix[5], imu->matrix[8]);

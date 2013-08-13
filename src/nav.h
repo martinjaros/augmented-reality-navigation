@@ -25,8 +25,8 @@
  * int main()
  * {
  *     struct attdinfo attd;
- *     struct posinfo pos;
- *     struct wptinfo wpt;
+ *     struct gpsdata gpsdata;
+ *     struct imudata imudata;
  *
  *     wpt_iter *iter = nav_load("waypoints.txt");
  *
@@ -36,7 +36,7 @@
  *
  *         nav_reset(iter);
  *
- *         while(nav_iter(iter, &attd, &pos, &wpt))
+ *         while(nav_iter(iter, &imudata, &gpsdata, &wpt))
  *         {
  *             // TODO: Process waypoint
  *         }
@@ -62,7 +62,7 @@ typedef struct _wpt_iter wpt_iter;
 /**
  * @brief Waypoint information
  */
-struct wptinfo
+struct wptdata
 {
     /**
      * @brief Label to display
@@ -99,12 +99,12 @@ void nav_reset(wpt_iter *iter);
 /**
  * @brief Iterates over waypoints, calculating their projections
  * @param iter Iterator as returned by `nav_load()`
- * @param attd Attitude information to use for projection
- * @param pos Position information to use for projection
+ * @param imudata Attitude information to use for projection
+ * @param gpsdata Position information to use for projection
  * @param[out] wpt Structure where to output results
  * @return 0 if there are no more waypoints to iterate, 1 otherwise
  */
-int nav_iter(wpt_iter *iter, const struct attdinfo *attd, const struct posinfo *pos, struct wptinfo *wpt);
+int nav_iter(wpt_iter *iter, const struct imudata *imudata, const struct gpsdata *gpsdata, struct wptdata *wpt);
 
 /**
  * @brief Frees allocated resources by the iterator

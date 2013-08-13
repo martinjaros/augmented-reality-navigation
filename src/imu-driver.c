@@ -38,6 +38,54 @@
 #define BMA150_ADDR            0x70
 #define BMA150_REG             0x02
 
+/* Performs I2C block write */
+static int i2c_write(int fd, uint16_t addr, uint16_t len, uint8_t *buf)
+{
+    struct i2c_msg msg =
+    {
+        .addr = addr,
+        .flags = 0,
+        .len = len,
+        .buf = buf
+    };
+
+    struct i2c_rdwr_ioctl_data msgset;
+    msgset.msgs = &msg;
+    msgset.nmsgs = 1;
+
+    if(ioctl(fd, I2C_RDWR, &msgset) == -1) return 0;
+
+    return 1;
+}
+
+/* Performs I2C one byte write and then block read */
+static int i2c_read(int fd, uint16_t addr, uint16_t len, uint8_t *buf)
+{
+    struct i2c_msg msg[] =
+    {
+        {
+            .addr = addr,
+            .flags = 0,
+            .len = 1,
+            .buf = buf
+        },
+        {
+            .addr = addr,
+            .flags = I2C_M_RD,
+            .len = len,
+            .buf = buf
+        }
+    };
+
+    struct i2c_rdwr_ioctl_data msgset;
+    msgset.msgs = msg;
+    msgset.nmsgs = 2;
+
+    if(ioctl(fd, I2C_RDWR, &msgset) == -1) return 0;
+
+    return 1;
+}
+
 int driver_init(int fd)
 {
     DEBUG("driver_init()");
@@ -45,32 +93,10 @@ int driver_init(int fd)
     unsigned char gyro_conf[] = ITG3200_CONF;
     unsigned char mag_conf[] = AK8975_CONF;
 
-    struct i2c_msg msg[] =
+    if(!i2c_write(fd, ITG3200_ADDR, sizeof(gyro_conf), gyro_conf) ||
+       !i2c_write(fd, AK8975_ADDR, sizeof(mag_conf), mag_conf))
     {
-        // Write ITG-3200 configuration (continuous measurement)
-        {
-            .addr = ITG3200_ADDR,
-            .flags = 0,
-            .len = sizeof(gyro_conf),
-            .buf = gyro_conf
-        },
-        // Write AK8975 configuration (single shot)
-        {
-            .addr = AK8975_ADDR,
-            .flags = 0,
-            .len = sizeof(mag_conf),
-            .buf = mag_conf
-        }
-    };
-
-    struct i2c_rdwr_ioctl_data msgset;
-    msgset.msgs = msg;
-    msgset.nmsgs = sizeof(msg) / sizeof(struct i2c_msg);
-
-    // Write data
-    if(ioctl(fd, I2C_RDWR, &msgset) == -1)
-    {
-        WARN("I2C write fail");
+        WARN("I2C transmission failed");
         return 0;
     }
 
@@ -87,64 +113,12 @@ int driver_read(int fd, struct driver_data *data)
     unsigned char mag_buf[6] = { AK8975_REG };
     unsigned char mag_conf[] = AK8975_CONF;
 
-    struct i2c_msg msg[] =
+    if(!i2c_read(fd, ITG3200_ADDR, sizeof(gyro_buf), gyro_buf) ||
+       !i2c_read(fd, ITG3200_ADDR, sizeof(mag_buf), mag_buf) ||
+       !i2c_write(fd, AK8975_ADDR, sizeof(mag_conf), mag_conf) ||
+       !i2c_read(fd, ITG3200_ADDR, sizeof(acc_buf), acc_buf))
     {
-        // Read gyroscope measurement
-        {
-            .addr = ITG3200_ADDR,
-            .flags = 0,
-            .len = 1,
-            .buf = gyro_buf
-        },
-        {
-            .addr = ITG3200_ADDR,
-            .flags = I2C_M_RD,
-            .len = sizeof(gyro_buf),
-            .buf = gyro_buf
-        },
-        // Read compass measurement
-        {
-            .addr = AK8975_ADDR,
-            .flags = 0,
-            .len = 1,
-            .buf = mag_buf
-        },
-        {
-            .addr = AK8975_ADDR,
-            .flags = I2C_M_RD,
-            .len = sizeof(mag_buf),
-            .buf = mag_buf
-        },
-        // Reconfigure compass (single shot)
-        {
-            .addr = AK8975_ADDR,
-            .flags = 0,
-            .len = sizeof(mag_conf),
-            .buf = mag_conf
-        },
-        // Read accelerometer measurement
-        {
-            .addr = BMA150_ADDR,
-            .flags = 0,
-            .len = 1,
-            .buf = acc_buf
-        },
-        {
-            .addr = BMA150_ADDR,
-            .flags = I2C_M_RD,
-            .len = sizeof(acc_buf),
-            .buf = acc_buf
-        }
-    };
-
-    struct i2c_rdwr_ioctl_data msgset;
-    msgset.msgs = msg;
-    msgset.nmsgs = sizeof(msg) / sizeof(struct i2c_msg);
-
-    // Read data
-    if(ioctl(fd, I2C_RDWR, &msgset) == -1)
-    {
-        WARN("I2C read fail");
+        WARN("I2C transmission failed");
         return 0;
     }
 

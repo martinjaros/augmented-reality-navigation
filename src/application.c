@@ -36,19 +36,18 @@
 #define M_PI    3.14159265358979323846
 #endif
 
-/* Helper macro, returns higher of the two arguments */
-#define MAX(a,b) (((a)>(b))?(a):(b))
-
 struct _application
 {
     // File descriptors
     int nfds;
-    int gpsfd, imufd, videofd;
+    int gpsfd, videofd;
 
     // Graphics state
     graphics_t *graphics;
     atlas_t *atlas;
-    drawable_t *image, *label_alt, *label_spd, *label_trk;
+    drawable_t *image;
+    drawable_t *label_alt, *label_spd, *label_trk;
+    drawable_t *label_dest_name, *label_dest_range, *label_dest_bearing;
 
     // Video state
     struct buffer *buffers;
@@ -56,16 +55,16 @@ struct _application
     // Navigation state
     wpt_iter *wpts;
     imu_t *imu;
-    struct posinfo pos;
-    struct attdinfo attd;
+    struct gpsdata gpsdata;
+    struct imudata imudata;
 };
 
 /* Resource cleanup helper function */
 static void cleanup(application_t *app)
 {
-    if(app->videofd) capture_stop(app->videofd, app->buffers);
-    if(app->imu) imu_close(app->imu, app->imufd);
-    if(app->gpsfd) gps_close(app->gpsfd);
+    if(app->videofd >= 0) capture_stop(app->videofd, app->buffers);
+    if(app->gpsfd >= 0) gps_close(app->gpsfd);
+    if(app->imu) imu_close(app->imu);
     if(app->wpts) nav_free(app->wpts);
     if(app->image) graphics_drawable_free(app->image);
     if(app->label_alt) graphics_drawable_free(app->label_alt);
@@ -123,8 +122,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Open IMU
-    app->imu = imu_open(cfg->imudev);
-    if((app->imu == NULL) || ((app->imufd = imu_timer_create(app->imu)) < 0))
+    if((app->imu = imu_open(cfg->imudev)) == NULL)
     {
         ERROR("Cannot initialize IMU device");
         cleanup(app);
@@ -144,7 +142,11 @@ application_t *application_init(struct config *cfg)
     app->label_alt = graphics_label_create(app->graphics);
     app->label_spd = graphics_label_create(app->graphics);
     app->label_trk = graphics_label_create(app->graphics);
-    if(!app->image || !app->label_alt || !app->label_spd || !app->label_trk)
+    app->label_dest_name = graphics_label_create(app->graphics);
+    app->label_dest_range = graphics_label_create(app->graphics);
+    app->label_dest_bearing = graphics_label_create(app->graphics);
+    if(!app->image || !app->label_alt || !app->label_spd || !app->label_trk ||
+       !app->label_dest_name || !app->label_dest_range || !app->label_dest_bearing)
     {
         ERROR("Cannot create graphics widgets");
         cleanup(app);
@@ -152,10 +154,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Calculate highest file descriptor + 1
-    app->nfds = MAX(app->gpsfd, app->nfds);
-    app->nfds = MAX(app->imufd, app->nfds);
-    app->nfds = MAX(app->videofd, app->nfds);
-    app->nfds++;
+    app->nfds = app->gpsfd > app->videofd ? app->gpsfd + 1 : app->videofd + 1;
 
     return app;
 }
@@ -170,7 +169,6 @@ void application_mainloop(application_t *app)
         fd_set fds;
         FD_ZERO(&fds);
         FD_SET(app->gpsfd, &fds);
-        FD_SET(app->imufd, &fds);
         FD_SET(app->videofd, &fds);
 
         DEBUG("select()");
@@ -179,25 +177,31 @@ void application_mainloop(application_t *app)
         // Process GPS
         if(FD_ISSET(app->gpsfd, &fds))
         {
-            if(gps_read(app->gpsfd, &app->pos))
+            if(gps_read(app->gpsfd, &app->gpsdata))
             {
                 char str[128];
 
-                snprintf(str, sizeof(str), "Altitude %d m", (int)(app->pos.alt + 0.5));
+                snprintf(str, sizeof(str), "Altitude %d m", (int)(app->gpsdata.alt + 0.5));
                 graphics_label_set_text(app->graphics, app->label_alt, app->atlas, str);
 
-                snprintf(str, sizeof(str), "Speed %d km/h", (int)(app->pos.spd + 0.5));
+                snprintf(str, sizeof(str), "Speed %d km/h", (int)(app->gpsdata.spd + 0.5));
                 graphics_label_set_text(app->graphics, app->label_spd, app->atlas, str);
 
-                snprintf(str, sizeof(str), "Track %d deg", (int)(app->pos.trk + 0.5));
+                snprintf(str, sizeof(str), "Track %d°", (int)(app->gpsdata.trk + 0.5));
                 graphics_label_set_text(app->graphics, app->label_trk, app->atlas, str);
-            }
-        }
 
-        // Process IMU
-        if(FD_ISSET(app->imufd, &fds))
-        {
-            imu_read(app->imu, &app->attd);
+                if(app->gpsdata.dest_name)
+                {
+                    snprintf(str, sizeof(str), "Destination %s", app->gpsdata.dest_name);
+                    graphics_label_set_text(app->graphics, app->label_dest_name, app->atlas, str);
+
+                    snprintf(str, sizeof(str), "Bearing %d°", (int)(app->gpsdata.dest_bearing + 0.5));
+                    graphics_label_set_text(app->graphics, app->label_dest_bearing, app->atlas, str);
+
+                    snprintf(str, sizeof(str), "Range %d km", (int)(app->gpsdata.dest_range + 0.5));
+                    graphics_label_set_text(app->graphics, app->label_dest_range, app->atlas, str);
+                }
+            }
         }
 
         // Process video
@@ -206,15 +210,22 @@ void application_mainloop(application_t *app)
             size_t bytesused;
             int index = capture_pop(app->videofd, &bytesused);
 
+            // Read from IMU
+            if(!imu_read(app->imu, &app->imudata))
+            {
+                ERROR("Cannot read from IMU device");
+                break;
+            }
+
             // Draw video frame
             assert(bytesused >= VIDEO_SIZE);
             graphics_image_set_bitmap(app->graphics, app->image, app->buffers[index].start);
             graphics_draw(app->graphics, app->image, 0, 0);
 
-            struct wptinfo wpt;
+            struct wptdata wpt;
 
             nav_reset(app->wpts);
-            while(nav_iter(app->wpts, &app->attd, &app->pos, &wpt))
+            while(nav_iter(app->wpts, &app->imudata, &app->gpsdata, &wpt))
             {
                 // Draw waypoint label
                 uint32_t x = VIDEO_WIDTH  / 2 + VIDEO_WIDTH  * wpt.x / (VIDEO_HFOV / 180.0 * M_PI);
@@ -229,9 +240,19 @@ void application_mainloop(application_t *app)
             graphics_draw(app->graphics, app->label_alt, 10, 10);
             graphics_draw(app->graphics, app->label_spd, 10, 10 + FONT_SIZE * 3 / 2);
             graphics_draw(app->graphics, app->label_trk, 10, 10 + FONT_SIZE * 3);
+            if(app->gpsdata.dest_name)
+            {
+                graphics_draw(app->graphics, app->label_dest_name, VIDEO_WIDTH - 100, 10);
+                graphics_draw(app->graphics, app->label_dest_bearing, VIDEO_WIDTH - 100, 10 + FONT_SIZE * 3 / 2);
+                graphics_draw(app->graphics, app->label_dest_range, VIDEO_WIDTH - 100, 10 + FONT_SIZE * 3);
+            }
 
             // Render to screen
-            if(!graphics_flush(app->graphics, NULL)) break;
+            if(!graphics_flush(app->graphics, NULL))
+            {
+                ERROR("Cannot draw");
+                break;
+            }
             capture_push(app->videofd, index);
         }
     }

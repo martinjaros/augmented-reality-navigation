@@ -30,34 +30,29 @@ Peripherals:
   - AKM AK8975 compass
   - Bosh BMA-150 accelerometer
 
- * GPS sensors (TTY)
+ * GPS sensor (TTY)
   - Any NMEA 0183 compatible device with serial interface
-
-Target platforms:
- * BeagleBone
-  - AM3358 ARM Cortex-A8
-  - <http://beagleboard.org/Products/BeagleBone>
-
- * BeagleBoard
-  - OMAP3530 ARM Cortex-A8
-  - <http://beagleboard.org/Products/BeagleBoard>
-
- * PandaBoard
-  - OMAP4460 ARM Cortex-A9 
-  - <http://pandaboard.org/>
-
- * Raspberry Pi
-  - BCM2835 ARM1176JZF-S
-  - <http://www.raspberrypi.org/>
 
 COMPILATION
 -------------
+To change compiler (gcc by default) use
+~~~
+make clean
+make CC=gcc-arm-linux-gnueabi
+~~~
 To enable X11 support use
 ~~~
+make clean
 make X11BUILD=1
+~~~
+To enable debug symbols use
+~~~
+make clean
+make DEBUG=1
 ~~~
 To change trace level use
 ~~~
+make clean
 make TRACE_LEVEL=number
 ~~~
 Levels are

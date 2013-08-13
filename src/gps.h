@@ -51,10 +51,15 @@
 #define GPS_H
 
 /**
- * @brief Position information
+ * @brief Position, track and destination information
  */
-struct posinfo
+struct gpsdata
 {
+    /**
+     * @brief Time in seconds
+     */
+    double time;
+
     /**
      * @brief Latitude in radians
      */
@@ -79,6 +84,46 @@ struct posinfo
      * @brief Track angle in degrees
      */
     double trk;
+
+    /**
+     * @brief Cross track error in kilometers (right positive, left negative)
+     */
+    double xte;
+
+    /**
+     * @brief Origin waypoint name
+     */
+    char orig_name[32];
+
+    /**
+     * @brief Destination waypoint name
+     */
+    char dest_name[32];
+
+    /**
+     * @brief Destination waypoint latitude in radians
+     */
+    double dest_lat;
+
+    /**
+     * @brief Destination waypoint longitude in radians
+     */
+    double dest_lon;
+
+    /**
+     * @brief Destination waypoint range in kilometers
+     */
+    double dest_range;
+
+    /**
+     * @brief Destination waypoint bearing in degrees
+     */
+    double dest_bearing;
+
+    /**
+     * @brief Destination waypoint closing velocity in kilometers per hour
+     */
+    double dest_velocity;
 };
 
 /**
@@ -91,10 +136,10 @@ int gps_open(const char *devname);
 /**
  * @brief Reads and parses NMEA 0183 sentence
  * @param fd File descriptor as returned by `gps_open()`
- * @param[out] pos Pointer to structure where to output results
+ * @param[out] data Pointer to structure where to output results
  * @return 1 if the structure was modified, 0 otherwise
  */
-int gps_read(int fd, struct posinfo *pos);
+int gps_read(int fd, struct gpsdata *data);
 
 /**
  * @brief Closes the device

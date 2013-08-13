@@ -32,7 +32,7 @@
 
 struct _graphics
 {
-    /* Native types*/
+    /* Native types */
     EGLNativeDisplayType native_display;
     EGLNativeWindowType native_window;
 
@@ -110,7 +110,7 @@ graphics_t *graphics_init()
         return NULL;
     }
 
-    /* Create window */
+    // Create window
     g->native_window = window_create(&g->native_display);
     if((g->display = eglGetDisplay(g->native_display)) == NULL)
     {
@@ -119,7 +119,7 @@ graphics_t *graphics_init()
         return NULL;
     }
 
-    /* Create surface */
+    // Create surface
     if(!(g->surface = surface_create(g->display, g->native_window, &g->context)))
     {
         WARN("Cannot create surface");
@@ -127,21 +127,17 @@ graphics_t *graphics_init()
         return NULL;
     }
 
-    /* Compile shader */
+    // Compile shader
     if(!(g->vert = shader_compile(GL_VERTEX_SHADER, (GLchar*)src_shader_vert, src_shader_vert_len)) ||
        !(g->frag = shader_compile(GL_FRAGMENT_SHADER, (GLchar*)src_shader_frag, src_shader_frag_len)) ||
        !(g->prog = shader_link(g->vert, g->frag)))
     {
         WARN("Cannot compile shader");
-        eglMakeCurrent(g->display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-        eglDestroyContext(g->display, g->context);
-        eglDestroySurface(g->display, g->surface);
-        window_destroy(g->native_display, g->native_window);
-        free(g);
+        cleanup(g);
         return NULL;
     }
 
-    /* Get shader attributes */
+    // Get shader attributes
     glUseProgram(g->prog);
     g->uni_tex = glGetUniformLocation(g->prog, "tex");  // Texture
     g->uni_color = glGetUniformLocation(g->prog, "color"); // RGBA drawing color
@@ -156,11 +152,11 @@ graphics_t *graphics_init()
     }
     glEnableVertexAttribArray(g->attr_coord);
 
-    /* Enable blending */
+    // Enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    /* Get surface dimensions */
+    // Get surface dimensions
     if(!eglQuerySurface(g->display, g->surface, EGL_WIDTH, &g->width) ||
        !eglQuerySurface(g->display, g->surface, EGL_HEIGHT, &g->height))
     {

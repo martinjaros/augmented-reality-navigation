@@ -66,13 +66,13 @@ int main(int argc, char *argv[])
 
     // Parse options
     int test = 0;
-    char *test_arg;
+    char *test_arg = NULL;
     while (getopt_long(argc, argv, "", options, &index) == 0)
     {
         switch (index)
         {
             case 0: usage(); return EXIT_SUCCESS;
-            case 1: test = 1; test_arg = optarg ? strdup(optarg) : NULL; break;
+            case 1: test = 1; if(optarg) test_arg = strdup(optarg); break;
             case 2: cfg.videodev = strdup(optarg); break;
             case 3: cfg.gpsdev = strdup(optarg); break;
             case 4: cfg.imudev = strdup(optarg); break;
@@ -99,7 +99,7 @@ int main(int argc, char *argv[])
         if(!test_arg || (strcmp(test_arg, "imu") == 0))
         {
             INFO("Testing IMU, imudev='%s'", cfg.imudev);
-            if(!test_imu(cfg.imudev, 100)) ERROR("IMU test failed");
+            if(!test_imu(cfg.imudev, 50)) ERROR("IMU test failed");
         }
         if(!test_arg || (strcmp(test_arg, "graphics") == 0))
         {

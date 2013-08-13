@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <math.h>
 #include <stdlib.h>
+#include <pthread.h>
 #include <sys/timerfd.h>
 
 #include "debug.h"
@@ -46,9 +47,10 @@
 /* IMU state structure */
 struct _imu
 {
-    double calib[3];
+    int devfd, timerfd, is_alive;
     double matrix[9];
-    int fd, steps;
+    pthread_t thread;
+    pthread_mutex_t mutex;
 };
 
 /* 3-axis orientation vector normalization helper function */
@@ -118,56 +120,32 @@ static void matrix_rotate(double m[9], double rx, double ry, double rz)
     for(i = 0; i < 9; i++) m[i] = r[i];
 }
 
-imu_t *imu_open(const char *devname)
+/* Select helper function */
+static void timerfd_select(int fd)
 {
-    DEBUG("imu_open()");
-    imu_t *imu;
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(fd, &fds);
 
-    assert(devname != NULL);
-
-    // Open device
-    int fd;
-    if((fd = open(devname, O_RDWR | O_NONBLOCK)) == -1)
-    {
-        WARN("Failed to open `%s`", devname);
-        return NULL;
-    }
-
-    // Initialize state structure
-    imu = malloc(sizeof(struct _imu));
-    if(imu == NULL)
-    {
-        WARN("Cannot allocate memory");
-        return NULL;
-    }
-    imu->fd = fd;
-    imu->steps = -GYRO_CALIB_SKIP;
-    imu->calib[0] = 0;
-    imu->calib[1] = 0;
-    imu->calib[2] = 0;
-
-    // Initialize driver
-    if(!driver_init(fd))
-    {
-        WARN("Cannot initialize IMU driver");
-        close(fd);
-        free(imu);
-        return NULL;
-    }
-
-    return imu;
+    select(fd + 1, &fds, NULL, NULL, NULL);
 }
 
-int imu_timer_create()
+/* IMU thread worker */
+static void *imu_worker(void *arg)
 {
-    DEBUG("imu_timer_create()");
-    int timerfd;
+    assert(arg != NULL);
 
-    // Create timer
-    if((timerfd = timerfd_create(CLOCK_REALTIME, O_NONBLOCK)) == -1)
+    int i;
+    struct driver_data data;
+    double matrix[9], calib[3] = { 0, 0, 0};
+    imu_t *imu = (imu_t*)arg;
+
+    // Initialize driver
+    if(!driver_init(imu->devfd))
     {
-        WARN("Failed to create timer");
-        return timerfd;
+        WARN("Cannot initialize driver");
+        imu->is_alive = 0;
+        return NULL;
     }
 
     struct itimerspec timer;
@@ -177,60 +155,54 @@ int imu_timer_create()
     timer.it_value.tv_nsec = timer.it_interval.tv_nsec;
 
     // Set timer
-    if((timerfd_settime(timerfd, 0, &timer, NULL)) == -1)
+    if((timerfd_settime(imu->timerfd, 0, &timer, NULL)) == -1)
     {
         WARN("Failed to set timer");
-        close(timerfd);
-        return -1;
+        imu->is_alive = 0;
+        return NULL;
     }
-
-    return timerfd;
-}
-
-int imu_read(imu_t *imu, struct attdinfo *attd)
-{
-    DEBUG("imu_read()");
-    assert(imu != NULL);
-    assert(attd != NULL);
-
-    // Read data from driver
-    struct driver_data data;
-    driver_read(imu->fd, &data);
 
     // Skip initial measurements
-    if(imu->steps++ < 0) return 0;
-
-    // Calibration steps
-    if(imu->steps++ < GYRO_CALIB_STEPS)
+    for(i = 0; i < GYRO_CALIB_SKIP; i++)
     {
-        imu->calib[0] += data.gyro[0];
-        imu->calib[1] += data.gyro[1];
-        imu->calib[2] += data.gyro[2];
-        return 0;
+        timerfd_select(imu->timerfd);
+        if(!driver_read(imu->devfd, &data)) goto error;
     }
-    else if(imu->steps++ == GYRO_CALIB_STEPS)
+
+    // Calibrate gyroscope
+    for(i = 0; i < GYRO_CALIB_STEPS; i++)
     {
-        // Finalize calibration
-        imu->calib[0] /= GYRO_CALIB_STEPS;
-        imu->calib[1] /= GYRO_CALIB_STEPS;
-        imu->calib[2] /= GYRO_CALIB_STEPS;
-
-        // Initialize rotation matrix
-        imu->matrix[0] = data.mag[0];
-        imu->matrix[1] = data.mag[1];
-        imu->matrix[2] = data.mag[2];
-        vector_normalize(&imu->matrix[0]);
-
-        imu->matrix[6] = data.acc[0];
-        imu->matrix[7] = data.acc[1];
-        imu->matrix[8] = data.acc[2];
-        vector_normalize(&imu->matrix[6]);
-
-        matrix_orthogonalize(imu->matrix);
-        INFO("IMU calibration finished");
+        timerfd_select(imu->timerfd);
+        if(!driver_read(imu->devfd, &data)) goto error;
+        calib[0] += data.gyro[0];
+        calib[1] += data.gyro[1];
+        calib[2] += data.gyro[2];
+        continue;
     }
-    else
+
+    // Finalize calibration
+    calib[0] /= GYRO_CALIB_STEPS;
+    calib[1] /= GYRO_CALIB_STEPS;
+    calib[2] /= GYRO_CALIB_STEPS;
+
+    // Initialize rotation matrix
+    matrix[0] = data.mag[0];
+    matrix[1] = data.mag[1];
+    matrix[2] = data.mag[2];
+    vector_normalize(&matrix[0]);
+
+    matrix[6] = data.acc[0];
+    matrix[7] = data.acc[1];
+    matrix[8] = data.acc[2];
+    vector_normalize(&matrix[6]);
+
+    matrix_orthogonalize(matrix);
+    INFO("IMU calibration finished");
+
+    while(1)
     {
+        timerfd_select(imu->timerfd);
+        if(!driver_read(imu->devfd, &data)) goto error;
         INFO("Compass readings [%lf, %lf, %lf]", data.mag[0], data.mag[1], data.mag[2]);
         INFO("Gyroscope readings [%lf, %lf, %lf]", data.gyro[0], data.gyro[1], data.gyro[2]);
         INFO("Accelerometer readings [%lf, %lf, %lf]", data.acc[0], data.acc[1], data.acc[2]);
@@ -238,39 +210,110 @@ int imu_read(imu_t *imu, struct attdinfo *attd)
         // Calculate weighted average
         vector_normalize(data.mag);
         vector_normalize(data.acc);
-        imu->matrix[0] = (1 - WEIGHT_MAG) * imu->matrix[0] + WEIGHT_MAG * data.mag[0];
-        imu->matrix[1] = (1 - WEIGHT_MAG) * imu->matrix[1] + WEIGHT_MAG * data.mag[1];
-        imu->matrix[2] = (1 - WEIGHT_MAG) * imu->matrix[2] + WEIGHT_MAG * data.mag[2];
-        imu->matrix[6] = (1 - WEIGHT_ACC) * imu->matrix[6] + WEIGHT_ACC * data.acc[0];
-        imu->matrix[7] = (1 - WEIGHT_ACC) * imu->matrix[7] + WEIGHT_ACC * data.acc[1];
-        imu->matrix[8] = (1 - WEIGHT_ACC) * imu->matrix[8] + WEIGHT_ACC * data.acc[2];
-        vector_normalize(&imu->matrix[0]);
-        vector_normalize(&imu->matrix[6]);
-        matrix_orthogonalize(imu->matrix);
+        matrix[0] = (1 - WEIGHT_MAG) * matrix[0] + WEIGHT_MAG * data.mag[0];
+        matrix[1] = (1 - WEIGHT_MAG) * matrix[1] + WEIGHT_MAG * data.mag[1];
+        matrix[2] = (1 - WEIGHT_MAG) * matrix[2] + WEIGHT_MAG * data.mag[2];
+        matrix[6] = (1 - WEIGHT_ACC) * matrix[6] + WEIGHT_ACC * data.acc[0];
+        matrix[7] = (1 - WEIGHT_ACC) * matrix[7] + WEIGHT_ACC * data.acc[1];
+        matrix[8] = (1 - WEIGHT_ACC) * matrix[8] + WEIGHT_ACC * data.acc[2];
+        vector_normalize(&matrix[0]);
+        vector_normalize(&matrix[6]);
+        matrix_orthogonalize(matrix);
+
+        // Rotate matrix
+        double rx = (data.gyro[0] - calib[0]) * TIMER_ITER_MS;
+        double ry = (data.gyro[1] - calib[1]) * TIMER_ITER_MS;
+        double rz = (data.gyro[2] - calib[2]) * TIMER_ITER_MS;
+        matrix_rotate(matrix, rx, ry, rz);
+
+        // Save matrix
+        pthread_mutex_lock(&imu->mutex);
+        for(i = 0; i < 9; i++) imu->matrix[i] = matrix[i];
+        pthread_mutex_unlock(&imu->mutex);
     }
 
-    // Rotate matrix
-    double rx = (data.gyro[0] - imu->calib[0]) * TIMER_ITER_MS;
-    double ry = (data.gyro[1] - imu->calib[1]) * TIMER_ITER_MS;
-    double rz = (data.gyro[2] - imu->calib[2]) * TIMER_ITER_MS;
-    matrix_rotate(imu->matrix, rx, ry, rz);
+error:
+    WARN("Failed to read from driver");
+    imu->is_alive = 0;
+    return NULL;
+}
+
+imu_t *imu_open(const char *devname)
+{
+    DEBUG("imu_open()");
+    assert(devname != NULL);
+
+    // Initialize state structure
+    imu_t *imu = calloc(1, sizeof(struct _imu));
+    if(imu == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
+
+    // Open device
+    if((imu->devfd = open(devname, O_RDWR)) == -1)
+    {
+        WARN("Failed to open `%s`", devname);
+        free(imu);
+        return NULL;
+    }
+
+    // Create timer
+    if((imu->timerfd = timerfd_create(CLOCK_REALTIME, O_NONBLOCK)) == -1)
+    {
+        WARN("Failed to create timer");
+        close(imu->devfd);
+        free(imu);
+        return NULL;
+    }
+
+    // Start worker thread
+    if(pthread_mutex_init(&imu->mutex, NULL) || pthread_create(&imu->thread, NULL, imu_worker, imu))
+    {
+        WARN("Failed to create thread");
+        close(imu->timerfd);
+        close(imu->devfd);
+        free(imu);
+        return NULL;
+    }
+    imu->is_alive = 1;
+
+    return imu;
+}
+
+int imu_read(imu_t *imu, struct imudata *data)
+{
+    DEBUG("imu_read()");
+    assert(imu != NULL);
+    assert(data != NULL);
+
+    if(!imu->is_alive)
+    {
+        WARN("Thread is dead");
+        return 0;
+    }
 
     // Get absolute angles
-    attd->roll = atan2(imu->matrix[5], imu->matrix[8]);
-    attd->pitch = asin(imu->matrix[2]);
-    attd->yaw = atan2(imu->matrix[1], imu->matrix[0]);
+    pthread_mutex_lock(&imu->mutex);
+    data->roll = atan2(imu->matrix[5], imu->matrix[8]);
+    data->pitch = asin(imu->matrix[2]);
+    data->yaw = atan2(imu->matrix[1], imu->matrix[0]);
+    pthread_mutex_unlock(&imu->mutex);
 
-    INFO("Attitude roll = %lf, pitch = %lf, yaw = %lf", attd->roll, attd->pitch, attd->yaw);
-
+    INFO("Attitude roll = %lf, pitch = %lf, yaw = %lf", data->roll, data->pitch, data->yaw);
     return 1;
 }
 
-void imu_close(imu_t *imu, int fd)
+void imu_close(imu_t *imu)
 {
     DEBUG("imu_close()");
     assert(imu != NULL);
 
-    if(fd > -1) close(fd);
-    close(imu->fd);
+    pthread_cancel(imu->thread);
+    pthread_detach(imu->thread);
+    pthread_mutex_destroy(&imu->mutex);
+    close(imu->timerfd);
+    close(imu->devfd);
     free(imu);
 }

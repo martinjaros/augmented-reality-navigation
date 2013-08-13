@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "debug.h"
 #include "graphics.h"
@@ -81,7 +82,7 @@ int test_gps(const char *devname, int loops)
 
     assert(devname != NULL);
 
-    int fd = gps_open("/dev/ttyS0");
+    int fd = gps_open(devname);
     if(fd < 0)
     {
         ERROR("Cannot initialize GPS device");
@@ -98,8 +99,8 @@ int test_gps(const char *devname, int loops)
         DEBUG("select()");
         select(fd + 1, &fds, NULL, NULL, NULL);
 
-        struct posinfo pos;
-        gps_read(fd, &pos);
+        struct gpsdata data = { };
+        gps_read(fd, &data);
     }
 
     gps_close(fd);
@@ -120,28 +121,20 @@ int test_imu(const char *devname, int loops)
         return 0;
     }
 
-    int fd = imu_timer_create();
-    if(fd < 0)
-    {
-        ERROR("Cannot create IMU timer");
-        return 0;
-    }
-
     int i;
     for(i = 0; i < loops; i++)
     {
-        fd_set fds;
-        FD_ZERO(&fds);
-        FD_SET(fd, &fds);
+        usleep(100000);
 
-        DEBUG("select()");
-        select(fd + 1, &fds, NULL, NULL, NULL);
-
-        struct attdinfo attd;
-        imu_read(imu, &attd);
+        struct imudata data = { };
+        if(!imu_read(imu, &data))
+        {
+            ERROR("IMU read error");
+            break;
+        }
     }
 
-    imu_close(imu, fd);
+    imu_close(imu);
 
     return 1;
 }
@@ -153,7 +146,7 @@ int test_capture(const char *devname, int loops)
     assert(devname != NULL);
 
     struct buffer *buffers;
-    int fd = capture_start("/dev/video0", 800, 600, "RGB4", false, &buffers);
+    int fd = capture_start(devname, 800, 600, "RGB4", false, &buffers);
     if(fd < 0)
     {
         ERROR("Cannot start video capture");

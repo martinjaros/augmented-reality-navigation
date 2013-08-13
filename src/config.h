@@ -35,7 +35,7 @@
 #define WPTF     "waypoints.txt"
 
 // Font file name
-#define FONTNAME "FreeSans.ttf"
+#define FONTNAME "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
 
 // Video frame width and height (pixels)
 #define VIDEO_WIDTH       800

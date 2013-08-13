@@ -1,5 +1,11 @@
-0.3 - WIP
- * unit test suite
+0.3
+ * font file removed, using system font
+ * I2C driver moved to separate thread
+ * added destination information
+ * added more NMEA sentences
+ * simplified makefile output
+ * added debug option
+ * added test suite
  * graphics fixes
  * separated I2C drivers, driver fixes
  * fixed memory leaks, more error checking

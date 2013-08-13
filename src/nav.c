@@ -172,12 +172,12 @@ void nav_reset(wpt_iter *iter)
     iter->current = iter->first;
 }
 
-int nav_iter(wpt_iter *iter, const struct attdinfo *attd, const struct posinfo *pos, struct wptinfo *res)
+int nav_iter(wpt_iter *iter, const struct imudata *imudata, const struct gpsdata *gpsdata, struct wptdata *res)
 {
     DEBUG("nav_iter()");
     assert(iter != NULL);
-    assert(attd != NULL);
-    assert(pos != NULL);
+    assert(imudata != NULL);
+    assert(gpsdata != NULL);
     assert(res != NULL);
 
     // Switch chunk if needed
@@ -191,20 +191,20 @@ int nav_iter(wpt_iter *iter, const struct attdinfo *attd, const struct posinfo *
     struct _wpt *wpt = &iter->current->wpts[iter->index++];
 
     // Calculate differentials
-    double dalt = wpt->alt - pos->alt;
-    double dlat = wpt->lat - pos->lat;
-    double dlon = cos(pos->lat) * (wpt->lon - pos->lon);
+    double dalt = wpt->alt - gpsdata->alt;
+    double dlat = wpt->lat - gpsdata->lat;
+    double dlon = cos(gpsdata->lat) * (wpt->lon - gpsdata->lon);
 
     // Calculate distance
     double dist = sqrt(dlat*dlat + dlon*dlon) * EARTH_RADIUS;
 
     // Calculate projection angles
-    double hangle = atan2(dlon, dlat) - attd->yaw;
-    double vangle = atan(dalt / dist) - attd->pitch;
+    double hangle = atan2(dlon, dlat) - imudata->yaw;
+    double vangle = atan(dalt / dist) - imudata->pitch;
 
     // Rotate
-    double cosz = cos(attd->roll);
-    double sinz = sin(attd->roll);
+    double cosz = cos(imudata->roll);
+    double sinz = sin(imudata->roll);
 
     res->x = hangle * cosz - vangle * sinz;
     res->y = hangle * sinz - vangle * cosz;

@@ -17,8 +17,7 @@
  *
  * @section DESCRIPTION
  * This is an inertial measurement unit providing attitude data.
- * You should use `select()` on file descriptor returned by `imu_timer_create()`
- * to synchronize before reading.
+ * Measurements are done on separate thread
  * @note All functions do not block
  *
  * Example:
@@ -27,24 +26,18 @@
  * {
  *     imu_t *imu = imu_open("/dev/i2c-0");
  *
- *     int fd = imu_timer_create();
- *
  *     while(1)
  *     {
- *         fd_set fds;
- *         FD_ZERO(&fds);
- *         FD_SET(fd, &fds);
- *
- *         select(fd + 1, &fds, NULL, NULL, NULL);
- *
  *         struct attdinfo attd;
  *         if(imu_read(imu, &attd))
  *         {
  *             // TODO: Do some processing here
  *         }
+ *
+ *         sleep(1);
  *     }
  *
- *     imu_close(imu, fd);
+ *     imu_close(imu);
  * }
  * @endcode
  */
@@ -60,7 +53,7 @@ typedef struct _imu imu_t;
 /**
  * @brief Attitude information
  */
-struct attdinfo
+struct imudata
 {
     /**
      * @brief Roll angle in radians
@@ -86,24 +79,17 @@ struct attdinfo
 imu_t *imu_open(const char *devname);
 
 /**
- * @brief Creates timer to synchronize device access
- * @return File descriptor of the created timer or -1 on error
- */
-int imu_timer_create();
-
-/**
  * @brief Reads data from devices
  * @param imu State variable as returned by `imu_open()`
- * @param[out] attd Pointer to structure where to output results
- * @return 1 if the structure was modified, 0 otherwise
+ * @param[out] data Pointer to structure where to output results
+ * @return 1 on success, 0 otherwise
  */
-int imu_read(imu_t *imu, struct attdinfo *attd);
+int imu_read(imu_t *imu, struct imudata *data);
 
 /**
  * @brief Closes the device
  * @param imu State variable as returned by `imu_open()`
- * @param fd File descriptor as returned by `imu_timer()`
  */
-void imu_close(imu_t *imu, int fd);
+void imu_close(imu_t *imu);
 
 #endif /* IMU_H */

@@ -1,7 +1,17 @@
 SOURCES = $(wildcard src/*.c)
-CFLAGS = -g -Wall
+CFLAGS = -Wall
 INCLUDES = -I/usr/include/freetype2
-LIBS = -lm -lfreetype -lGLESv2 -lEGL
+LIBS = -lm -lpthread -lfreetype -lGLESv2 -lEGL
+
+ifndef CC
+CC = gcc
+endif
+
+ifeq ($(DEBUG),1)
+	CFLAGS += -g
+else
+	CFLAGS += -O2
+endif
 
 ifeq ($(X11BUILD),1)
 	CFLAGS += -DX11BUILD
@@ -19,26 +29,28 @@ endif
 all: bin/arnav
 
 clean:
-	rm -r -f obj bin doc
+	@rm -r -f obj bin doc
 
 doc:
-	doxygen
+	@doxygen
 
 bin/arnav: $(SOURCES:src/%.c=obj/%.o) |bin
-	gcc -o $@ $^ $(LIBS)
+	@echo LD $@
+	@$(CC) -o $@ $^ $(LIBS)
 
 obj/%.o: src/%.c |obj
-	gcc $(CFLAGS) $(INCLUDES) -MMD -MF $(@:.o=.d) -c -o $@ $<
+	@echo CC $<
+	@$(CC) $(CFLAGS) $(INCLUDES) -MMD -MF $(@:.o=.d) -c -o $@ $<
 
 obj/graphics.o: src/shaders.inc
 -include obj/*.d
 
 src/shaders.inc: src/shader.frag src/shader.vert
-	xxd -i src/shader.frag > src/shaders.inc
-	xxd -i src/shader.vert >> src/shaders.inc
+	@xxd -i src/shader.frag > src/shaders.inc
+	@xxd -i src/shader.vert >> src/shaders.inc
 
 obj:
-	mkdir -p obj
+	@mkdir -p obj
 
 bin:
-	mkdir -p bin
+	@mkdir -p bin

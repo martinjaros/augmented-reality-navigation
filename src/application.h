@@ -53,6 +53,11 @@ struct config
      * @brief Font file name
      */
     char *fontname;
+
+    /**
+     * @brief Calibration file name
+     */
+    char *calibname;
 };
 
 /**

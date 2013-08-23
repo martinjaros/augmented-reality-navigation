@@ -36,24 +36,20 @@
 /* Timer period */
 #define TIMER_ITER_MS   10
 
-/* Number of calibration steps */
-#define GYRO_CALIB_SKIP     2
-#define GYRO_CALIB_STEPS    30
-
-/* Base weights for averaging */
-#define WEIGHT_ACC  0.5
-#define WEIGHT_MAG  0.5
+/* I/O buffer size */
+#define BUFFER_SIZE     128
 
 /* IMU state structure */
 struct _imu
 {
     int devfd, timerfd, is_alive;
     double matrix[9];
+    struct imucalib calib;
     pthread_t thread;
     pthread_mutex_t mutex;
 };
 
-/* 3-axis orientation vector normalization helper function */
+/* Normalizes 3D vector */
 static void vector_normalize(double v[3])
 {
     double len = sqrt(v[0]*v[0] + v[1]*v[1] + v[2]*v[2]);
@@ -62,10 +58,31 @@ static void vector_normalize(double v[3])
     v[2] /= len;
 }
 
-/* 3x3 rotation matrix orthogonalization helper function */
-static void matrix_orthogonalize(double m[9])
+/* Rotates vector around Y and Z axis */
+static void vector_rotate_yz(double v[3], double ry, double rz)
 {
-    // Half of the dot product (orthogonal error coefficient)
+    // Y rotation
+    double sinr = sin(ry);
+    double cosr = cos(ry);
+    double tmp[3] =
+    {
+        cosr*v[0] + sinr*v[2],
+        v[1],
+        cosr*v[2] - sinr*v[0]
+    };
+
+    // Z rotation
+    sinr = sin(rz);
+    cosr = cos(rz);
+    v[0] = cosr*tmp[0] - sinr*tmp[1];
+    v[1] = sinr*tmp[0] + cosr*tmp[1];
+    v[2] = tmp[2];
+}
+
+/* Performs rotation on 3x3 rotation matrix */
+static void matrix_orthogonalize_and_rotate(double m[9], double rx, double ry, double rz)
+{
+    // Half of the dot product (error)
     double dot_2 = (m[0]*m[6] + m[1]*m[7] + m[2]*m[8]) / 2;
 
     // Orthogonalized compass vector
@@ -86,38 +103,24 @@ static void matrix_orthogonalize(double m[9])
     };
     vector_normalize(acc);
 
-    // Compose 3x3 matrix
-    m[0] = mag[0];
-    m[1] = mag[1];
-    m[2] = mag[2];
-    m[3] = acc[1] * mag[2] - acc[2] * mag[1];
-    m[4] = acc[2] * mag[0] - acc[0] * mag[2];
-    m[5] = acc[0] * mag[1] - acc[1] * mag[0];
-    m[6] = acc[0];
-    m[7] = acc[1];
-    m[8] = acc[2];
-}
-
-/* 3x3 matrix rotation helper function */
-static void matrix_rotate(double m[9], double rx, double ry, double rz)
-{
-    double r[9] =
+    // Vector cross product
+    double prod[3] =
     {
-            m[0] + rz*m[3] - ry*m[6],
-            m[1] + rz*m[4] - ry*m[7],
-            m[2] + rz*m[5] - ry*m[8],
-
-            (rx*ry-rz)*m[0] + (rx*ry*rz+1)*m[3] + rx*m[6],
-            (rx*ry-rz)*m[1] + (rx*ry*rz+1)*m[4] + rx*m[7],
-            (rx*ry-rz)*m[2] + (rx*ry*rz+1)*m[5] + rx*m[8],
-
-            (rx*rz+ry)*m[0] + (ry*rz-rx)*m[3] + m[6],
-            (rx*rz+ry)*m[1] + (ry*rz-rx)*m[4] + m[7],
-            (rx*rz+ry)*m[2] + (ry*rz-rx)*m[5] + m[8]
+        acc[1] * mag[2] - acc[2] * mag[1],
+        acc[2] * mag[0] - acc[0] * mag[2],
+        acc[0] * mag[1] - acc[1] * mag[0]
     };
 
-    int i;
-    for(i = 0; i < 9; i++) m[i] = r[i];
+    // Rotate
+    m[0] = mag[0] + rz*prod[3] - ry*acc[6];
+    m[1] = mag[1] + rz*prod[4] - ry*acc[7];
+    m[2] = mag[2] + rz*prod[5] - ry*acc[8];
+    m[3] = (rx*ry-rz)*mag[0] + (rx*ry*rz+1)*prod[3] + rx*acc[6];
+    m[4] = (rx*ry-rz)*mag[1] + (rx*ry*rz+1)*prod[4] + rx*acc[7];
+    m[5] = (rx*ry-rz)*mag[2] + (rx*ry*rz+1)*prod[5] + rx*acc[8];
+    m[6] = (rx*rz+ry)*mag[0] + (ry*rz-rx)*prod[3] + acc[6];
+    m[7] = (rx*rz+ry)*mag[1] + (ry*rz-rx)*prod[4] + acc[7];
+    m[8] = (rx*rz+ry)*mag[2] + (ry*rz-rx)*prod[5] + acc[8];
 }
 
 /* Select helper function */
@@ -134,10 +137,6 @@ static void timerfd_select(int fd)
 static void *imu_worker(void *arg)
 {
     assert(arg != NULL);
-
-    int i;
-    struct driver_data data;
-    double matrix[9], calib[3] = { 0, 0, 0};
     imu_t *imu = (imu_t*)arg;
 
     // Initialize driver
@@ -162,71 +161,45 @@ static void *imu_worker(void *arg)
         return NULL;
     }
 
-    // Skip initial measurements
-    for(i = 0; i < GYRO_CALIB_SKIP; i++)
-    {
-        timerfd_select(imu->timerfd);
-        if(!driver_read(imu->devfd, &data)) goto error;
-    }
-
-    // Calibrate gyroscope
-    for(i = 0; i < GYRO_CALIB_STEPS; i++)
-    {
-        timerfd_select(imu->timerfd);
-        if(!driver_read(imu->devfd, &data)) goto error;
-        calib[0] += data.gyro[0];
-        calib[1] += data.gyro[1];
-        calib[2] += data.gyro[2];
-        continue;
-    }
-
-    // Finalize calibration
-    calib[0] /= GYRO_CALIB_STEPS;
-    calib[1] /= GYRO_CALIB_STEPS;
-    calib[2] /= GYRO_CALIB_STEPS;
-
-    // Initialize rotation matrix
-    matrix[0] = data.mag[0];
-    matrix[1] = data.mag[1];
-    matrix[2] = data.mag[2];
-    vector_normalize(&matrix[0]);
-
-    matrix[6] = data.acc[0];
-    matrix[7] = data.acc[1];
-    matrix[8] = data.acc[2];
-    vector_normalize(&matrix[6]);
-
-    matrix_orthogonalize(matrix);
-    INFO("IMU calibration finished");
-
     while(1)
     {
+        struct driver_data data;
+        double matrix[9] = { };
+        int i;
+
+        // Get data
         timerfd_select(imu->timerfd);
         if(!driver_read(imu->devfd, &data)) goto error;
-        INFO("Compass readings [%lf, %lf, %lf]", data.mag[0], data.mag[1], data.mag[2]);
-        INFO("Gyroscope readings [%lf, %lf, %lf]", data.gyro[0], data.gyro[1], data.gyro[2]);
-        INFO("Accelerometer readings [%lf, %lf, %lf]", data.acc[0], data.acc[1], data.acc[2]);
 
-        // Calculate weighted average
-        vector_normalize(data.mag);
+        // Apply calibrations
+        data.mag[0] -= imu->calib.mag_deviation_x;
+        data.mag[1] -= imu->calib.mag_deviation_y;
+        data.mag[2] -= imu->calib.mag_deviation_z;
+        data.gyro[0] -= imu->calib.gyro_offset_x;
+        data.gyro[1] -= imu->calib.gyro_offset_y;
+        data.gyro[2] -= imu->calib.gyro_offset_z;
         vector_normalize(data.acc);
-        matrix[0] = (1 - WEIGHT_MAG) * matrix[0] + WEIGHT_MAG * data.mag[0];
-        matrix[1] = (1 - WEIGHT_MAG) * matrix[1] + WEIGHT_MAG * data.mag[1];
-        matrix[2] = (1 - WEIGHT_MAG) * matrix[2] + WEIGHT_MAG * data.mag[2];
-        matrix[6] = (1 - WEIGHT_ACC) * matrix[6] + WEIGHT_ACC * data.acc[0];
-        matrix[7] = (1 - WEIGHT_ACC) * matrix[7] + WEIGHT_ACC * data.acc[1];
-        matrix[8] = (1 - WEIGHT_ACC) * matrix[8] + WEIGHT_ACC * data.acc[2];
+        vector_normalize(data.mag);
+        vector_rotate_yz(data.mag, imu->calib.mag_inclination, imu->calib.mag_declination);
+        INFO("Compass [%lf, %lf, %lf]", data.mag[0], data.mag[1], data.mag[2]);
+        INFO("Gyroscope [%lf, %lf, %lf]", data.gyro[0], data.gyro[1], data.gyro[2]);
+        INFO("Accelerometer [%lf, %lf, %lf]", data.acc[0], data.acc[1], data.acc[2]);
+
+        // Integrate
+        data.gyro[0] *= (double)TIMER_ITER_MS / 1000.0;
+        data.gyro[1] *= (double)TIMER_ITER_MS / 1000.0;
+        data.gyro[2] *= (double)TIMER_ITER_MS / 1000.0;
+
+        // Update matrix
+        matrix[0] = (1 - imu->calib.mag_weight) * matrix[0] + imu->calib.mag_weight * data.mag[0];
+        matrix[1] = (1 - imu->calib.mag_weight) * matrix[1] + imu->calib.mag_weight * data.mag[1];
+        matrix[2] = (1 - imu->calib.mag_weight) * matrix[2] + imu->calib.mag_weight * data.mag[2];
+        matrix[6] = (1 - imu->calib.acc_weight) * matrix[6] + imu->calib.acc_weight * data.acc[0];
+        matrix[7] = (1 - imu->calib.acc_weight) * matrix[7] + imu->calib.acc_weight * data.acc[1];
+        matrix[8] = (1 - imu->calib.acc_weight) * matrix[8] + imu->calib.acc_weight * data.acc[2];
         vector_normalize(&matrix[0]);
         vector_normalize(&matrix[6]);
-        matrix_orthogonalize(matrix);
-
-        // Rotate matrix
-        double rx = (data.gyro[0] - calib[0]) * TIMER_ITER_MS;
-        double ry = (data.gyro[1] - calib[1]) * TIMER_ITER_MS;
-        double rz = (data.gyro[2] - calib[2]) * TIMER_ITER_MS;
-        matrix_rotate(matrix, rx, ry, rz);
-
-        // Save matrix
+        matrix_orthogonalize_and_rotate(matrix, data.gyro[0], data.gyro[1], data.gyro[2]);
         pthread_mutex_lock(&imu->mutex);
         for(i = 0; i < 9; i++) imu->matrix[i] = matrix[i];
         pthread_mutex_unlock(&imu->mutex);
@@ -238,10 +211,58 @@ error:
     return NULL;
 }
 
-imu_t *imu_open(const char *devname)
+int imu_load_calib(struct imucalib *calib, const char *source)
+{
+    DEBUG("imu_load_calib()");
+    assert(calib != NULL);
+    assert(source != NULL);
+
+    FILE *f;
+    if((f = fopen(source, "r")) == NULL)
+    {
+        WARN("Failed to open `%s`", source);
+        return 0;
+    }
+
+    bzero(calib, sizeof(struct imucalib));
+    char buf[BUFFER_SIZE];
+    while(fgets(buf, BUFFER_SIZE, f) != NULL)
+    {
+        char *str = buf;
+
+        // Skip empty lines and '#' comments
+        while(*str == ' ') str++;
+        if((*str == '\n') || (*str == '#')) continue;
+
+        // Parse line
+        if(sscanf(str, "gyro_offset_x = %lf", &calib->gyro_offset_x) != 1)
+        if(sscanf(str, "gyro_offset_y = %lf", &calib->gyro_offset_y) != 1)
+        if(sscanf(str, "gyro_offset_z = %lf", &calib->gyro_offset_z) != 1)
+        if(sscanf(str, "mag_deviation_x = %lf", &calib->mag_deviation_x) != 1)
+        if(sscanf(str, "mag_deviation_y = %lf", &calib->mag_deviation_y) != 1)
+        if(sscanf(str, "mag_deviation_z = %lf", &calib->mag_deviation_z) != 1)
+        if(sscanf(str, "mag_declination = %lf", &calib->mag_declination) != 1)
+        if(sscanf(str, "mag_inclination = %lf", &calib->mag_inclination) != 1)
+        if(sscanf(str, "mag_weight = %lf", &calib->mag_weight) != 1)
+        if(sscanf(str, "acc_weight = %lf", &calib->acc_weight) != 1)
+        {
+            WARN("Parse error");
+            return 0;
+        }
+    }
+
+    INFO("Calibration(1/2) gyro_offset_x = %lf, gyro_offset_y = %lf, gyro_offset_z = %lf, mag_deviation_x = %lf, mag_deviation_y = %lf, mag_deviation_z = %lf",
+         calib->gyro_offset_x, calib->gyro_offset_y, calib->gyro_offset_z, calib->mag_deviation_x, calib->mag_deviation_y, calib->mag_deviation_z);
+    INFO("Calibration(2/2) mag_declination = %lf, mag_inclination = %lf, mag_weight = %lf, acc_weight = %lf",
+         calib->mag_declination, calib->mag_inclination, calib->mag_weight, calib->acc_weight);
+    return 1;
+}
+
+imu_t *imu_open(const char *devname, const struct imucalib *calib)
 {
     DEBUG("imu_open()");
     assert(devname != NULL);
+    assert(calib != NULL);
 
     // Initialize state structure
     imu_t *imu = calloc(1, sizeof(struct _imu));
@@ -250,6 +271,7 @@ imu_t *imu_open(const char *devname)
         WARN("Cannot allocate memory");
         return NULL;
     }
+    memcpy(&imu->calib, calib, sizeof(struct imucalib));
 
     // Open device
     if((imu->devfd = open(devname, O_RDWR)) == -1)

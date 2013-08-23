@@ -32,10 +32,13 @@
 #define IMUDEV   "/dev/i2c-0"
 
 // Waypoint database file name
-#define WPTF     "waypoints.txt"
+#define WPTF     "share/waypoints.lst"
 
 // Font file name
 #define FONTNAME "/usr/share/fonts/truetype/freefont/FreeSans.ttf"
+
+// Calibration file name
+#define CALIBNAME "share/calibration.cfg"
 
 // Video frame width and height (pixels)
 #define VIDEO_WIDTH       800

@@ -28,7 +28,7 @@
 static void usage()
 {
     printf("Augmented reality navigation\n"
-           "usage: arnav [--help] [--test[=<test>]] [--video=<device>] [--gps=<device>] [--imu=<device>] [--wpts=<filename>] [--font=<fontname>]\n"
+           "usage: arnav [--help] [--test[=<test>]] [--video=<device>] [--gps=<device>] [--imu=<device>] [--wpts=<filename>] [--font=<fontname>] [--calib=<calibname>]\n"
            "   --help              Shows help\n"
            "   --test              Executes unit tests\n"
            "   --video=<device>    Sets video device to use (\"/dev/video*\")\n"
@@ -36,6 +36,7 @@ static void usage()
            "   --imu=<device>      Sets IMU device to use (\"/dev/i2c-*\")\n"
            "   --wpts=<filename>   Sets waypoint file to use\n"
            "   --font=<fontname>   Sets TrueType font file to use\n"
+           "   --calib=<calibname> Sets calibration file to use\n"
            "\n");
 }
 
@@ -49,7 +50,8 @@ int main(int argc, char *argv[])
         .gpsdev = GPSDEV,
         .imudev = IMUDEV,
         .wptf = WPTF,
-        .fontname = FONTNAME
+        .fontname = FONTNAME,
+        .calibname = CALIBNAME
     };
 
     int index = 0;
@@ -61,6 +63,7 @@ int main(int argc, char *argv[])
         { "imu",   required_argument, 0, 0 },
         { "wpts",  required_argument, 0, 0 },
         { "font",  required_argument, 0, 0 },
+        { "calib",  required_argument, 0, 0 },
         { 0, 0, 0, 0}
     };
 
@@ -78,6 +81,7 @@ int main(int argc, char *argv[])
             case 4: cfg.imudev = strdup(optarg); break;
             case 5: cfg.wptf = strdup(optarg); break;
             case 6: cfg.fontname = strdup(optarg); break;
+            case 7: cfg.calibname = strdup(optarg); break;
         }
     }
 
@@ -99,7 +103,7 @@ int main(int argc, char *argv[])
         if(!test_arg || (strcmp(test_arg, "imu") == 0))
         {
             INFO("Testing IMU, imudev='%s'", cfg.imudev);
-            if(!test_imu(cfg.imudev, 50)) ERROR("IMU test failed");
+            if(!test_imu(cfg.imudev, cfg.calibname, 50)) ERROR("IMU test failed");
         }
         if(!test_arg || (strcmp(test_arg, "graphics") == 0))
         {
@@ -111,8 +115,8 @@ int main(int argc, char *argv[])
     }
     else
     {
-        INFO("Initializing videodev='%s', gpsdev='%s', imudev='%s', wptf='%s', fontname='%s'",
-             cfg.videodev, cfg.gpsdev, cfg.imudev, cfg.wptf, cfg.fontname);
+        INFO("Initializing videodev='%s', gpsdev='%s', imudev='%s', wptf='%s', fontname='%s', calibname='%s'",
+             cfg.videodev, cfg.gpsdev, cfg.imudev, cfg.wptf, cfg.fontname, cfg.calibname);
 
         // Start application
         application_t *app = application_init(&cfg);

@@ -62,8 +62,8 @@ struct _application
 /* Resource cleanup helper function */
 static void cleanup(application_t *app)
 {
-    if(app->videofd >= 0) capture_stop(app->videofd, app->buffers);
-    if(app->gpsfd >= 0) gps_close(app->gpsfd);
+    if(app->videofd > 0) capture_stop(app->videofd, app->buffers);
+    if(app->gpsfd > 0) gps_close(app->gpsfd);
     if(app->imu) imu_close(app->imu);
     if(app->wpts) nav_free(app->wpts);
     if(app->image) graphics_drawable_free(app->image);
@@ -121,8 +121,17 @@ application_t *application_init(struct config *cfg)
         return NULL;
     }
 
+    // Load IMU calibration
+    struct imucalib calib;
+    if(!imu_load_calib(&calib, cfg->calibname))
+    {
+        ERROR("Cannot load IMU calibration");
+        cleanup(app);
+        return NULL;
+    }
+
     // Open IMU
-    if((app->imu = imu_open(cfg->imudev)) == NULL)
+    if((app->imu = imu_open(cfg->imudev, &calib)) == NULL)
     {
         ERROR("Cannot initialize IMU device");
         cleanup(app);

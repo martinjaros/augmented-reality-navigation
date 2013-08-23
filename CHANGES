@@ -1,3 +1,5 @@
+ * Improved DCM algorithm, external calibration
+
 0.3
  * font file removed, using system font
  * I2C driver moved to separate thread
@@ -20,7 +22,7 @@
  * global configuration moved to config.h
  * merged graphics framework, new graphics API
  * all geometry is stored in vertex buffer objects
- * added NMEA 0183 RMC sentence, added global labels (altitude, speed, track angle) 
+ * added NMEA 0183 RMC sentence, added global labels (altitude, speed, track angle)
 
 0.1
  * initial release

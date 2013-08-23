@@ -29,14 +29,16 @@
 #define ITG3200_ADDR           0x68
 #define ITG3200_REG            0x1D
 #define ITG3200_CONF           { 0x15, 0, (3 << 3) | 1, 0 }
-#define ITG3200_SCALE          (2000.0 / 180.0 * M_PI) / 32767.0 / 1000.0
+#define ITG3200_SCALE          M_PI / 180.0 / 14.375
 
 #define AK8975_ADDR            0x0C
 #define AK8975_REG             0x03
 #define AK8975_CONF            { 0x0A, 1 }
+#define AK8975_SCALE           0.3
 
-#define BMA150_ADDR            0x70
+#define BMA150_ADDR            0x38
 #define BMA150_REG             0x02
+#define BMA150_SCALE           1.0 / 128.0
 
 /* Performs I2C block write */
 static int i2c_write(int fd, uint16_t addr, uint16_t len, uint8_t *buf)
@@ -125,13 +127,13 @@ int driver_read(int fd, struct driver_data *data)
     uint16_t ax = (uint16_t)acc_buf[0] >> 6 | (uint16_t)acc_buf[1] << 2;
     uint16_t ay = (uint16_t)acc_buf[2] >> 6 | (uint16_t)acc_buf[3] << 2;
     uint16_t az = (uint16_t)acc_buf[4] >> 6 | (uint16_t)acc_buf[5] << 2;
-    data->acc[0] = (int16_t)(ax > 0x1FF ? ax - 0x400 : ax);
-    data->acc[1] = (int16_t)(ay > 0x1FF ? ay - 0x400 : ay);
-    data->acc[2] = (int16_t)(az > 0x1FF ? az - 0x400 : az);
+    data->acc[0] = (int16_t)(ax > 0x1FF ? ax - 0x400 : ax) * BMA150_SCALE;
+    data->acc[1] = (int16_t)(ay > 0x1FF ? ay - 0x400 : ay) * BMA150_SCALE;
+    data->acc[2] = (int16_t)(az > 0x1FF ? az - 0x400 : az) * BMA150_SCALE;
 
-    data->mag[0] = (int16_t)((uint16_t)mag_buf[0] | (uint16_t)mag_buf[1] << 8);
-    data->mag[1] = (int16_t)((uint16_t)mag_buf[2] | (uint16_t)mag_buf[3] << 8);
-    data->mag[2] = (int16_t)((uint16_t)mag_buf[4] | (uint16_t)mag_buf[5] << 8);
+    data->mag[0] = (int16_t)((uint16_t)mag_buf[0] | (uint16_t)mag_buf[1] << 8) * AK8975_SCALE;
+    data->mag[1] = (int16_t)((uint16_t)mag_buf[2] | (uint16_t)mag_buf[3] << 8) * AK8975_SCALE;
+    data->mag[2] = (int16_t)((uint16_t)mag_buf[4] | (uint16_t)mag_buf[5] << 8) * AK8975_SCALE;
 
     data->gyro[0] = (int16_t)((uint16_t)gyro_buf[0] << 8 | (uint16_t)gyro_buf[1]) * ITG3200_SCALE;
     data->gyro[1] = (int16_t)((uint16_t)gyro_buf[2] << 8 | (uint16_t)gyro_buf[3]) * ITG3200_SCALE;

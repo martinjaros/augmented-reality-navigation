@@ -44,7 +44,7 @@ int test_gps(const char *devname, int loops);
  * @param loops Number of loops
  * @return 1 on success, 0 on failure
  */
-int test_imu(const char *devname, int loops);
+int test_imu(const char *devname, const char *calibname, int loops);
 
 /**
  * @brief Tests capture module

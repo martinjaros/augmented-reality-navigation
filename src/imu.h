@@ -24,7 +24,9 @@
  * @code
  * int main()
  * {
- *     imu_t *imu = imu_open("/dev/i2c-0");
+ *     struct imucalib calib;
+ *     imu_load_calib(&calib, "calibration.cfg");
+ *     imu_t *imu = imu_open("/dev/i2c-0", &calib);
  *
  *     while(1)
  *     {
@@ -72,11 +74,46 @@ struct imudata
 };
 
 /**
+ * @brief IMU calibration data
+ */
+struct imucalib
+{
+    /**
+     * @brief Gyroscope zero offset (radian per second)
+     */
+    double gyro_offset_x, gyro_offset_y, gyro_offset_z;
+
+    /**
+     * @brief Compass deviation (microtesla)
+     */
+    double mag_deviation_x, mag_deviation_y, mag_deviation_z;
+
+    /**
+     * @brief Compass declination and inclination (radian)
+     */
+    double mag_declination, mag_inclination;
+
+    /**
+     * @brief Relative weight of the compass and accelerometer measurements
+     */
+    double mag_weight, acc_weight;
+};
+
+/**
+ * @brief Loads calibration data from file
+ * @param[out] calib Calibration data
+ * @param source Source file name
+ * @return 1 on success, 0 otherwise
+ */
+int imu_load_calib(struct imucalib *calib, const char *source);
+
+/**
  * @brief Opens I2C bus and initializes the devices
  * @param devname Name of the I2C bus eg. "/dev/i2c-0"
+ * @param calib Calibration data
  * @returns Internal state variable or NULL on error
  */
-imu_t *imu_open(const char *devname);
+imu_t *imu_open(const char *devname, const struct imucalib *calib);
 
 /**
  * @brief Reads data from devices

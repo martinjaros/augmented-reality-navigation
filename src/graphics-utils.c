@@ -119,6 +119,8 @@ EGLNativeWindowType window_create(EGLNativeDisplayType *display)
     XSendEvent(*display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
     XFlush(*display);
 
+    INFO("Created window 0x%x", (unsigned int)window);
+
     return window;
 
 #else

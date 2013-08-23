@@ -30,17 +30,17 @@
 struct driver_data
 {
     /**
-     * @brief Gyroscope data (x, y, z)
+     * @brief Gyroscope data (radian per second)
      */
     double gyro[3];
 
     /**
-     * @brief Compass data (x, y, z)
+     * @brief Compass data (microtesla)
      */
     double mag[3];
 
     /**
-     * @brief Accelerometer data (x, y, z)
+     * @brief Accelerometer data (meter per second)
      */
     double acc[3];
 };

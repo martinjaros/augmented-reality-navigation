@@ -108,13 +108,20 @@ int test_gps(const char *devname, int loops)
     return 1;
 }
 
-int test_imu(const char *devname, int loops)
+int test_imu(const char *devname, const char *calibname, int loops)
 {
     DEBUG("test_imu()");
-
     assert(devname != NULL);
+    assert(calibname != NULL);
 
-    imu_t *imu = imu_open(devname);
+    struct imucalib calib;
+    if(!imu_load_calib(&calib, calibname))
+    {
+        ERROR("Cannot load IMU calibration");
+        return 0;
+    }
+
+    imu_t *imu = imu_open(devname, &calib);
     if(imu == 0)
     {
         ERROR("Cannot initialize IMU device");

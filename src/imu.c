@@ -36,9 +36,6 @@
 /* Timer period */
 #define TIMER_ITER_MS   10
 
-/* I/O buffer size */
-#define BUFFER_SIZE     128
-
 /* IMU state structure */
 struct _imu
 {
@@ -136,6 +133,7 @@ static void timerfd_select(int fd)
 /* IMU thread worker */
 static void *imu_worker(void *arg)
 {
+    DEBUG("Worker thread start");
     assert(arg != NULL);
     imu_t *imu = (imu_t*)arg;
 
@@ -209,53 +207,6 @@ error:
     WARN("Failed to read from driver");
     imu->is_alive = 0;
     return NULL;
-}
-
-int imu_load_calib(struct imucalib *calib, const char *source)
-{
-    DEBUG("imu_load_calib()");
-    assert(calib != NULL);
-    assert(source != NULL);
-
-    FILE *f;
-    if((f = fopen(source, "r")) == NULL)
-    {
-        WARN("Failed to open `%s`", source);
-        return 0;
-    }
-
-    bzero(calib, sizeof(struct imucalib));
-    char buf[BUFFER_SIZE];
-    while(fgets(buf, BUFFER_SIZE, f) != NULL)
-    {
-        char *str = buf;
-
-        // Skip empty lines and '#' comments
-        while(*str == ' ') str++;
-        if((*str == '\n') || (*str == '#')) continue;
-
-        // Parse line
-        if(sscanf(str, "gyro_offset_x = %lf", &calib->gyro_offset_x) != 1)
-        if(sscanf(str, "gyro_offset_y = %lf", &calib->gyro_offset_y) != 1)
-        if(sscanf(str, "gyro_offset_z = %lf", &calib->gyro_offset_z) != 1)
-        if(sscanf(str, "mag_deviation_x = %lf", &calib->mag_deviation_x) != 1)
-        if(sscanf(str, "mag_deviation_y = %lf", &calib->mag_deviation_y) != 1)
-        if(sscanf(str, "mag_deviation_z = %lf", &calib->mag_deviation_z) != 1)
-        if(sscanf(str, "mag_declination = %lf", &calib->mag_declination) != 1)
-        if(sscanf(str, "mag_inclination = %lf", &calib->mag_inclination) != 1)
-        if(sscanf(str, "mag_weight = %lf", &calib->mag_weight) != 1)
-        if(sscanf(str, "acc_weight = %lf", &calib->acc_weight) != 1)
-        {
-            WARN("Parse error");
-            return 0;
-        }
-    }
-
-    INFO("Calibration(1/2) gyro_offset_x = %lf, gyro_offset_y = %lf, gyro_offset_z = %lf, mag_deviation_x = %lf, mag_deviation_y = %lf, mag_deviation_z = %lf",
-         calib->gyro_offset_x, calib->gyro_offset_y, calib->gyro_offset_z, calib->mag_deviation_x, calib->mag_deviation_y, calib->mag_deviation_z);
-    INFO("Calibration(2/2) mag_declination = %lf, mag_inclination = %lf, mag_weight = %lf, acc_weight = %lf",
-         calib->mag_declination, calib->mag_inclination, calib->mag_weight, calib->acc_weight);
-    return 1;
 }
 
 imu_t *imu_open(const char *devname, const struct imucalib *calib)

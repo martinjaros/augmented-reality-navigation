@@ -47,6 +47,8 @@
 #ifndef IMU_H
 #define IMU_H
 
+#include "imu-utils.h"
+
 /**
  * @brief IMU state variable
  */
@@ -72,40 +74,6 @@ struct imudata
      */
     double yaw;
 };
-
-/**
- * @brief IMU calibration data
- */
-struct imucalib
-{
-    /**
-     * @brief Gyroscope zero offset (radian per second)
-     */
-    double gyro_offset_x, gyro_offset_y, gyro_offset_z;
-
-    /**
-     * @brief Compass deviation (microtesla)
-     */
-    double mag_deviation_x, mag_deviation_y, mag_deviation_z;
-
-    /**
-     * @brief Compass declination and inclination (radian)
-     */
-    double mag_declination, mag_inclination;
-
-    /**
-     * @brief Relative weight of the compass and accelerometer measurements
-     */
-    double mag_weight, acc_weight;
-};
-
-/**
- * @brief Loads calibration data from file
- * @param[out] calib Calibration data
- * @param source Source file name
- * @return 1 on success, 0 otherwise
- */
-int imu_load_calib(struct imucalib *calib, const char *source);
 
 /**
  * @brief Opens I2C bus and initializes the devices

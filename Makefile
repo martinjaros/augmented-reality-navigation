@@ -4,16 +4,16 @@ INCLUDES = -I/usr/include/freetype2
 LIBS = -lm -lpthread -lfreetype -lGLESv2 -lEGL
 
 ifndef CC
-CC = gcc
+	CC = gcc
 endif
 
-ifeq ($(DEBUG),1)
+ifdef DEBUG
 	CFLAGS += -g
 else
 	CFLAGS += -O2
 endif
 
-ifeq ($(X11BUILD),1)
+ifdef X11BUILD
 	CFLAGS += -DX11BUILD
 	LIBS += -lX11
 endif
@@ -22,6 +22,12 @@ ifdef TRACE_LEVEL
 	CFLAGS += -DTRACE_LEVEL=$(TRACE_LEVEL)
 else
 	CFLAGS += -DTRACE_LEVEL=2
+endif
+
+ifdef DRIVER
+	CFLAGS += -DDRIVER_$(DRIVER)
+else
+	CFLAGS += -DDRIVER_ITG3200_AK8975_BMA150
 endif
 
 .PHONY: all clean doc

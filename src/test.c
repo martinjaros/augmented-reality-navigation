@@ -115,7 +115,7 @@ int test_imu(const char *devname, const char *calibname, int loops)
     assert(calibname != NULL);
 
     struct imucalib calib;
-    if(!imu_load_calib(&calib, calibname))
+    if(!imu_calib_load(&calib, calibname))
     {
         ERROR("Cannot load IMU calibration");
         return 0;

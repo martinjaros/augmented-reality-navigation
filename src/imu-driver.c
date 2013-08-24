@@ -88,6 +88,8 @@ static int i2c_read(int fd, uint16_t addr, uint16_t len, uint8_t *buf)
     return 1;
 }
 
+#ifdef DRIVER_ITG3200_AK8975_BMA150
+
 int driver_init(int fd)
 {
     DEBUG("driver_init()");
@@ -141,3 +143,7 @@ int driver_read(int fd, struct driver_data *data)
 
     return 1;
 }
+
+#else
+#error "No driver specified"
+#endif

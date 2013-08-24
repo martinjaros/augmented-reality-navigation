@@ -123,7 +123,7 @@ application_t *application_init(struct config *cfg)
 
     // Load IMU calibration
     struct imucalib calib;
-    if(!imu_load_calib(&calib, cfg->calibname))
+    if(!imu_calib_load(&calib, cfg->calibname))
     {
         ERROR("Cannot load IMU calibration");
         cleanup(app);

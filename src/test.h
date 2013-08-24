@@ -41,6 +41,7 @@ int test_gps(const char *devname, int loops);
 /**
  * @brief Tests IMU module
  * @param devname Name of the I2C bus eg. "/dev/i2c-0"
+ * @param calibname Name of the calibration file
  * @param loops Number of loops
  * @return 1 on success, 0 on failure
  */

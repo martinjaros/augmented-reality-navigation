@@ -99,7 +99,7 @@ static void cleanup(graphics_t *g)
    free(g);
 }
 
-graphics_t *graphics_init()
+graphics_t *graphics_init(uint16_t width, uint16_t height)
 {
     DEBUG("graphics_init()");
 
@@ -111,7 +111,7 @@ graphics_t *graphics_init()
     }
 
     // Create window
-    g->native_window = window_create(&g->native_display);
+    g->native_window = window_create(&g->native_display, width, height);
     if((g->display = eglGetDisplay(g->native_display)) == NULL)
     {
         WARN("Failed to get display");

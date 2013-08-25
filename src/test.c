@@ -26,13 +26,13 @@
 #include "imu.h"
 #include "capture.h"
 
-int test_graphics(const char *font, int loops)
+int test_graphics(const char *font, uint16_t width, uint16_t height, int loops)
 {
     DEBUG("test_graphics()");
 
     assert(font != NULL);
 
-    graphics_t *g = graphics_init();
+    graphics_t *g = graphics_init(width, height);
     if(g == NULL)
     {
         ERROR("Cannot initialize graphics");
@@ -146,21 +146,37 @@ int test_imu(const char *devname, const char *calibname, int loops)
     return 1;
 }
 
-int test_capture(const char *devname, int loops)
+int test_capture(const char *devname, uint16_t width, uint16_t height, int loops)
 {
     DEBUG("test_capture()");
 
     assert(devname != NULL);
 
+    graphics_t *g = graphics_init(width, height);
+    if(g == NULL)
+    {
+        ERROR("Cannot initialize graphics");
+        return 0;
+    }
+
+    drawable_t *image = graphics_image_create(g, width, height);
+    if(image == NULL)
+    {
+        ERROR("Cannot create image");
+        graphics_free(g);
+        return 0;
+    }
+
     struct buffer *buffers;
-    int fd = capture_start(devname, 800, 600, "RGB4", false, &buffers);
+    int fd = capture_start(devname, width, height, "RGB4", false, &buffers);
     if(fd < 0)
     {
         ERROR("Cannot start video capture");
         return 0;
     }
 
-    while(1)
+    int i;
+    for(i = 0; i < loops; i++)
     {
         fd_set fds;
         FD_ZERO(&fds);
@@ -171,10 +187,20 @@ int test_capture(const char *devname, int loops)
 
         size_t bytesused;
         int index = capture_pop(fd, &bytesused);
+        assert(bytesused >= 4 * width * height);
+        graphics_image_set_bitmap(g, image, buffers[index].start);
+        graphics_draw(g, image, 0, 0);
+        if(!graphics_flush(g, NULL))
+        {
+            WARN("Unable to draw");
+            break;
+        }
         capture_push(fd, index);
     }
 
     capture_stop(fd, buffers);
+    graphics_drawable_free(image);
+    graphics_free(g);
 
     return 1;
 }

@@ -102,29 +102,33 @@ int main(int argc, char *argv[])
     if(test)
     {
         // Execute tests
+        int counter = 0;
+
         if((test == (char*)-1) || (strcmp(test, "capture") == 0))
         {
             INFO("Testing capture, videodev='%s'", cfg.videodev);
-            if(!test_capture(cfg.videodev, 100)) ERROR("Capture test failed");
+            if(!test_capture(cfg.videodev, VIDEO_WIDTH, VIDEO_HEIGHT, 100)) ERROR("Capture test failed"); else counter++;
         }
 
         if((test == (char*)-1) || (strcmp(test, "gps") == 0))
         {
             INFO("Testing GPS, gpsdev='%s'", cfg.gpsdev);
-            if(!test_gps(cfg.gpsdev, 20)) ERROR("GPS test failed");
+            if(!test_gps(cfg.gpsdev, 20)) ERROR("GPS test failed"); else counter++;
         }
 
         if((test == (char*)-1) || (strcmp(test, "imu") == 0))
         {
             INFO("Testing IMU, imudev='%s'", cfg.imudev);
-            if(!test_imu(cfg.imudev, cfg.calibname, 50)) ERROR("IMU test failed");
+            if(!test_imu(cfg.imudev, cfg.calibname, 50)) ERROR("IMU test failed"); else counter++;
         }
+
         if((test == (char*)-1) || (strcmp(test, "graphics") == 0))
         {
             INFO("Testing graphics, fontname='%s'", cfg.fontname);
-            if(!test_graphics(cfg.fontname, 100)) ERROR("Graphics test failed");
+            if(!test_graphics(cfg.fontname, VIDEO_WIDTH, VIDEO_HEIGHT, 100)) ERROR("Graphics test failed"); else counter++;
         }
 
+        INFO("%d tests completed sucessfully", counter);
         return EXIT_SUCCESS;
     }
     else

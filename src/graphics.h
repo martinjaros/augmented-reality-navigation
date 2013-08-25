@@ -65,9 +65,11 @@ typedef struct _drawable drawable_t;
 
 /**
  * @brief Initializes graphics
+ * @param width Requested surface width
+ * @param height Requested surface height
  * @return Internal graphics state
  */
-graphics_t *graphics_init();
+graphics_t *graphics_init(uint16_t width, uint16_t height);
 
 /**
  * @brief Flushes framebuffer

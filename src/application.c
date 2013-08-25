@@ -89,7 +89,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Initialize graphics
-    if((app->graphics = graphics_init()) == NULL)
+    if((app->graphics = graphics_init(VIDEO_WIDTH, VIDEO_HEIGHT)) == NULL)
     {
         ERROR("Cannot initialize graphics");
         cleanup(app);

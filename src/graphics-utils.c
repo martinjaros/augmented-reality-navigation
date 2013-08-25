@@ -79,7 +79,7 @@ GLuint shader_link(GLuint vertex, GLuint fragment)
     return program;
 }
 
-EGLNativeWindowType window_create(EGLNativeDisplayType *display)
+EGLNativeWindowType window_create(EGLNativeDisplayType *display, uint16_t width, uint16_t height)
 {
     DEBUG("window_create()");
 #ifdef X11BUILD
@@ -95,7 +95,10 @@ EGLNativeWindowType window_create(EGLNativeDisplayType *display)
     // Create window
     unsigned long color = BlackPixel(*display, 0);
     Window root = RootWindow(*display, 0);
-    Window window = XCreateSimpleWindow(*display, root, 0, 0, 100, 100, 0, color, color);
+    Window window = XCreateSimpleWindow(*display, root, 0, 0, width, height, 0, color, color);
+    XMapWindow(*display, window);
+
+#if FULLSCREEN
     Atom state = XInternAtom(*display, "_NET_WM_STATE", False);
     Atom fullscreen = XInternAtom(*display, "_NET_WM_STATE_FULLSCREEN", False);
     if(!window)
@@ -113,12 +116,10 @@ EGLNativeWindowType window_create(EGLNativeDisplayType *display)
     event.xclient.data.l[0] = 1;
     event.xclient.data.l[1] = fullscreen;
     event.xclient.data.l[2] = 0;
-
-    /* Set fullscreen */
-    XMapWindow(*display, window);
     XSendEvent(*display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
-    XFlush(*display);
+#endif /* FULLSCREEN */
 
+    XFlush(*display);
     INFO("Created window 0x%x", (unsigned int)window);
 
     return window;

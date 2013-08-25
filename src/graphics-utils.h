@@ -23,6 +23,7 @@
 #ifndef GRAPHICS_UTILS_H
 #define GRAPHICS_UTILS_H
 
+#include <stdint.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
 
@@ -46,10 +47,12 @@ GLuint shader_link(GLuint vertex, GLuint fragment);
 /**
  * @brief Creates X11 fullscreen window
  * @param[out] display Opened display
+ * @param width Requested window width
+ * @param height Requested window height
  * @returns Window XID
  * @note If X11 support is not enabled, returns 0
  */
-EGLNativeWindowType window_create(EGLNativeDisplayType *display);
+EGLNativeWindowType window_create(EGLNativeDisplayType *display, uint16_t width, uint16_t height);
 
 /**
  * @brief Destroys X11 window and closes display

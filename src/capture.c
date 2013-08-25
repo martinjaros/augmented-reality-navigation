@@ -152,6 +152,8 @@ int capture_start(const char *devname, uint32_t width, uint32_t height, const ch
         return -1;
     }
 
+    INFO("Capture started with %d buffers", reqbuf.count);
+
     return fd;
 }
 
@@ -174,6 +176,8 @@ int capture_pop(int fd, size_t *len)
         return -1;
     }
 
+    INFO("Dequeued buffer %d of size %d", buf.index, buf.bytesused);
+
     *len = buf.bytesused;
     return buf.index;
 }
@@ -182,7 +186,7 @@ void capture_push(int fd, int index)
 {
     DEBUG("capture_push()");
     assert(fd >= 0);
-    assert(index > 0);
+    assert(index >= 0);
 
     struct v4l2_buffer buf;
     bzero(&buf, sizeof(buf));
@@ -195,6 +199,8 @@ void capture_push(int fd, int index)
     {
         WARN("Failed to queue buffer");
     }
+
+    INFO("Enqueued buffer %d", buf.index);
 }
 
 void capture_stop(int fd, struct buffer *buffers)

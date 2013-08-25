@@ -22,13 +22,17 @@
 #ifndef TEST_H
 #define TEST_H
 
+#include <stdint.h>
+
 /**
  * @brief Tests graphics module
  * @param font Font file path to use
+ * @param width Requested window width
+ * @param height Requested window height
  * @param loops Number of loops
  * @return 1 on success, 0 on failure
  */
-int test_graphics(const char *font, int loops);
+int test_graphics(const char *font, uint16_t width, uint16_t height, int loops);
 
 /**
  * @brief Tests GPS module
@@ -50,9 +54,11 @@ int test_imu(const char *devname, const char *calibname, int loops);
 /**
  * @brief Tests capture module
  * @param devname Device name eg. "/dev/video0"
+ * @param width Requested frame width
+ * @param height Requested frame height
  * @param loops Number of loops
  * @return 1 on success, 0 on failure
  */
-int test_capture(const char *devname, int loops);
+int test_capture(const char *devname, uint16_t width, uint16_t height, int loops);
 
 #endif /* TEST_H */

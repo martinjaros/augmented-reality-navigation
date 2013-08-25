@@ -14,7 +14,7 @@ else
 endif
 
 ifdef X11BUILD
-	CFLAGS += -DX11BUILD
+	CFLAGS += -DX11BUILD -DFULLSCREEN=0
 	LIBS += -lX11
 endif
 

@@ -1,4 +1,5 @@
- * Improved DCM algorithm, external calibration
+ * added software pipe for IMU input
+ * improved DCM algorithm, external calibration
 
 0.3
  * font file removed, using system font

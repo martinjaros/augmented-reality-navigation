@@ -17,6 +17,7 @@
 
 #include <assert.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <math.h>
 #include <sys/ioctl.h>
 #include <linux/i2c.h>
@@ -39,6 +40,8 @@
 #define BMA150_ADDR            0x38
 #define BMA150_REG             0x02
 #define BMA150_SCALE           1.0 / 128.0
+
+#if defined(DRIVER_ITG3200_AK8975_BMA150)
 
 /* Performs I2C block write */
 static int i2c_write(int fd, uint16_t addr, uint16_t len, uint8_t *buf)
@@ -87,8 +90,6 @@ static int i2c_read(int fd, uint16_t addr, uint16_t len, uint8_t *buf)
 
     return 1;
 }
-
-#ifdef DRIVER_ITG3200_AK8975_BMA150
 
 int driver_init(int fd)
 {
@@ -140,6 +141,68 @@ int driver_read(int fd, struct driver_data *data)
     data->gyro[0] = (int16_t)((uint16_t)gyro_buf[0] << 8 | (uint16_t)gyro_buf[1]) * ITG3200_SCALE;
     data->gyro[1] = (int16_t)((uint16_t)gyro_buf[2] << 8 | (uint16_t)gyro_buf[3]) * ITG3200_SCALE;
     data->gyro[2] = (int16_t)((uint16_t)gyro_buf[4] << 8 | (uint16_t)gyro_buf[5]) * ITG3200_SCALE;
+
+    return 1;
+}
+
+#elif defined(DRIVER_SOFT)
+
+int driver_init(int fd)
+{
+    DEBUG("driver_init()");
+
+    // Synchronize with newline
+    char c;
+    do
+    {
+        if(read(fd, &c, 1) != 1)
+        {
+            WARN("Failed to read from pipe");
+            return 0;
+        }
+    }
+    while(c != '\n');
+
+    return 1;
+}
+
+int driver_read(int fd, struct driver_data *data)
+{
+    DEBUG("driver_read()");
+    assert(data != NULL);
+
+    char buf[sizeof(struct driver_data) * 2 + 1];
+
+try_again:
+    if(read(fd, buf, sizeof(buf)) != sizeof(buf))
+    {
+        WARN("Failed to read from pipe");
+        return 0;
+    }
+
+    // Check framing
+    if(buf[sizeof(buf) - 1] != '\n')
+    {
+        WARN("Soft driver out of sync");
+        if(driver_init(fd))
+        {
+            goto try_again;
+        }
+        else return 0;
+    }
+
+    buf[sizeof(buf) - 1] = 0;
+    INFO("Soft driver received %s", buf);
+
+    int i;
+    for(i = 0; i < sizeof(struct driver_data); i++)
+    {
+        ((uint8_t*)data)[i] = buf[i * 2] < 'A' ? buf[i * 2] - '0' : buf[i * 2] < 'a' ? 10 + buf[i * 2] - 'A' : 10 + buf[i * 2] - 'a';
+        ((uint8_t*)data)[i] *= 16;
+        ((uint8_t*)data)[i] += buf[i * 2 + 1] < 'A' ? buf[i * 2 + 1] - '0' : buf[i * 2 + 1] < 'a' ? 10 + buf[i * 2 + 1] - 'A' : 10 + buf[i * 2 + 1] - 'a';
+    }
+    INFO("Soft driver parsed %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf, %lf",
+         data->gyro[0], data->gyro[1], data->gyro[2], data->mag[0], data->mag[1], data->mag[2], data->acc[0], data->acc[1], data->acc[2]);
 
     return 1;
 }

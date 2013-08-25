@@ -17,7 +17,11 @@
  *
  * @section DESCRIPTION
  * These are internal I2C drivers for the IMU module.
- * Supported devices: ITG-3200, AK8975, BMA-150
+ * Supported devices:
+ *  * ITG-3200, AK8975, BMA-150 (with DRIVER_ITG3200_AK8975_BMA150 defined)
+ *  * software pipe (with DRIVER_SOFT defined)
+ *
+ * Software pipe uses Base16 encoding of the driver_data structure terminated by new line.
  *
  */
 

@@ -8,13 +8,13 @@ ifndef CC
 endif
 
 ifdef DEBUG
-	CFLAGS += -g
+	CFLAGS += -O -g -Werror
 else
 	CFLAGS += -O2
 endif
 
 ifdef X11BUILD
-	CFLAGS += -DX11BUILD -DFULLSCREEN=0
+	CFLAGS += -DX11BUILD
 	LIBS += -lX11
 endif
 
@@ -40,17 +40,20 @@ clean:
 doc:
 	@doxygen
 
-bin/arnav: $(SOURCES:src/%.c=obj/%.o) |bin
+bin/arnav:  obj/main.o bin/arnav.a
 	@echo LD $@
 	@$(CC) -o $@ $^ $(LIBS)
 
+bin/arnav.a: $(filter-out obj/main.o, $(SOURCES:src/%.c=obj/%.o)) |bin
+	@echo AR $@
+	@ar rcs $@ $^
+
+-include obj/*.d
 obj/%.o: src/%.c |obj
 	@echo CC $<
 	@$(CC) $(CFLAGS) $(INCLUDES) -MMD -MF $(@:.o=.d) -c -o $@ $<
 
-obj/graphics.o: src/shaders.inc
--include obj/*.d
-
+src/graphics.c: src/shaders.inc
 src/shaders.inc: src/shader.frag src/shader.vert
 	@xxd -i src/shader.frag > src/shaders.inc
 	@xxd -i src/shader.vert >> src/shaders.inc

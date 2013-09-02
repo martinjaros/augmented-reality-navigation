@@ -70,6 +70,9 @@ static void cleanup(application_t *app)
     if(app->label_alt) graphics_drawable_free(app->label_alt);
     if(app->label_spd) graphics_drawable_free(app->label_spd);
     if(app->label_trk) graphics_drawable_free(app->label_trk);
+    if(app->label_dest_name) graphics_drawable_free(app->label_dest_name);
+    if(app->label_dest_bearing) graphics_drawable_free(app->label_dest_bearing);
+    if(app->label_dest_range) graphics_drawable_free(app->label_dest_range);
     if(app->atlas) graphics_atlas_free(app->atlas);
     if(app->graphics) graphics_free(app->graphics);
     free(app);
@@ -89,7 +92,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Initialize graphics
-    if((app->graphics = graphics_init(VIDEO_WIDTH, VIDEO_HEIGHT)) == NULL)
+    if((app->graphics = graphics_init(graphics_window_create(VIDEO_WIDTH, VIDEO_HEIGHT))) == NULL)
     {
         ERROR("Cannot initialize graphics");
         cleanup(app);
@@ -148,12 +151,12 @@ application_t *application_init(struct config *cfg)
 
     // Create video image and global labels
     app->image = graphics_image_create(app->graphics, VIDEO_WIDTH, VIDEO_HEIGHT);
-    app->label_alt = graphics_label_create(app->graphics);
-    app->label_spd = graphics_label_create(app->graphics);
-    app->label_trk = graphics_label_create(app->graphics);
-    app->label_dest_name = graphics_label_create(app->graphics);
-    app->label_dest_range = graphics_label_create(app->graphics);
-    app->label_dest_bearing = graphics_label_create(app->graphics);
+    app->label_alt = graphics_label_create(app->graphics, app->atlas);
+    app->label_spd = graphics_label_create(app->graphics,app->atlas);
+    app->label_trk = graphics_label_create(app->graphics,app->atlas);
+    app->label_dest_name = graphics_label_create(app->graphics,app->atlas);
+    app->label_dest_range = graphics_label_create(app->graphics,app->atlas);
+    app->label_dest_bearing = graphics_label_create(app->graphics,app->atlas);
     if(!app->image || !app->label_alt || !app->label_spd || !app->label_trk ||
        !app->label_dest_name || !app->label_dest_range || !app->label_dest_bearing)
     {
@@ -191,24 +194,30 @@ void application_mainloop(application_t *app)
                 char str[128];
 
                 snprintf(str, sizeof(str), "Altitude %d m", (int)(app->gpsdata.alt + 0.5));
-                graphics_label_set_text(app->graphics, app->label_alt, app->atlas, str);
+                graphics_label_set_text(app->label_alt, ANCHOR_LEFT_TOP, str);
 
                 snprintf(str, sizeof(str), "Speed %d km/h", (int)(app->gpsdata.spd + 0.5));
-                graphics_label_set_text(app->graphics, app->label_spd, app->atlas, str);
+                graphics_label_set_text(app->label_spd, ANCHOR_LEFT_TOP, str);
 
-                snprintf(str, sizeof(str), "Track %d°", (int)(app->gpsdata.trk + 0.5));
-                graphics_label_set_text(app->graphics, app->label_trk, app->atlas, str);
+                snprintf(str, sizeof(str), "Track %d deg", (int)(app->gpsdata.trk + 0.5));
+                graphics_label_set_text(app->label_trk, ANCHOR_LEFT_TOP, str);
 
-                if(app->gpsdata.dest_name)
+                if(app->gpsdata.dest_name[0])
                 {
                     snprintf(str, sizeof(str), "Destination %s", app->gpsdata.dest_name);
-                    graphics_label_set_text(app->graphics, app->label_dest_name, app->atlas, str);
+                    graphics_label_set_text(app->label_dest_name, ANCHOR_RIGHT_TOP, str);
 
                     snprintf(str, sizeof(str), "Bearing %d°", (int)(app->gpsdata.dest_bearing + 0.5));
-                    graphics_label_set_text(app->graphics, app->label_dest_bearing, app->atlas, str);
+                    graphics_label_set_text(app->label_dest_bearing, ANCHOR_RIGHT_TOP, str);
 
                     snprintf(str, sizeof(str), "Range %d km", (int)(app->gpsdata.dest_range + 0.5));
-                    graphics_label_set_text(app->graphics, app->label_dest_range, app->atlas, str);
+                    graphics_label_set_text(app->label_dest_range, ANCHOR_RIGHT_TOP, str);
+                }
+                else
+                {
+                    graphics_label_set_text(app->label_dest_name, ANCHOR_RIGHT_TOP, "");
+                    graphics_label_set_text(app->label_dest_bearing, ANCHOR_RIGHT_TOP, "");
+                    graphics_label_set_text(app->label_dest_range, ANCHOR_RIGHT_TOP, "");
                 }
             }
         }
@@ -228,7 +237,7 @@ void application_mainloop(application_t *app)
 
             // Draw video frame
             assert(bytesused >= VIDEO_SIZE);
-            graphics_image_set_bitmap(app->graphics, app->image, app->buffers[index].start);
+            graphics_image_set_bitmap(app->image, app->buffers[index].start);
             graphics_draw(app->graphics, app->image, 0, 0);
 
             struct wptdata wpt;
@@ -243,17 +252,18 @@ void application_mainloop(application_t *app)
                 {
                     graphics_draw(app->graphics, wpt.label, x, y);
                 }
+                else INFO("Waypoint clipped before drawing");
             }
 
             // Draw global labels
             graphics_draw(app->graphics, app->label_alt, 10, 10);
             graphics_draw(app->graphics, app->label_spd, 10, 10 + FONT_SIZE * 3 / 2);
             graphics_draw(app->graphics, app->label_trk, 10, 10 + FONT_SIZE * 3);
-            if(app->gpsdata.dest_name)
+            if(app->gpsdata.dest_name[0])
             {
-                graphics_draw(app->graphics, app->label_dest_name, VIDEO_WIDTH - 100, 10);
-                graphics_draw(app->graphics, app->label_dest_bearing, VIDEO_WIDTH - 100, 10 + FONT_SIZE * 3 / 2);
-                graphics_draw(app->graphics, app->label_dest_range, VIDEO_WIDTH - 100, 10 + FONT_SIZE * 3);
+                graphics_draw(app->graphics, app->label_dest_name, VIDEO_WIDTH - 10, 10);
+                graphics_draw(app->graphics, app->label_dest_bearing, VIDEO_WIDTH - 10, 10 + FONT_SIZE * 3 / 2);
+                graphics_draw(app->graphics, app->label_dest_range, VIDEO_WIDTH - 10, 10 + FONT_SIZE * 3);
             }
 
             // Render to screen

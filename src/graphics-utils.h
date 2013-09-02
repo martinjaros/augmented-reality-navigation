@@ -26,6 +26,30 @@
 #include <stdint.h>
 #include <EGL/egl.h>
 #include <GLES2/gl2.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+/* Atlas character mapping, using characters 32 - 255 of ISO-8859-1 / Unicode */
+#define ATLAS_MAP_OFFSET      32
+#define ATLAS_MAP_LENGTH      (256 - ATLAS_MAP_OFFSET)
+
+/* Atlas texture size */
+#define ATLAS_TEXTURE_WIDTH   512
+#define ATLAS_TEXTURE_HEIGHT  512
+
+//! @cond
+struct _atlas
+{
+    GLuint texture;
+    struct
+    {
+        float left, top, width, height;
+        float tex_x, tex_y;
+        float advance_x, advance_y;
+    }
+    chars[ATLAS_MAP_LENGTH];
+};
+//! @endcond
 
 /**
  * @brief Compiles shader from source
@@ -45,24 +69,6 @@ GLuint shader_compile(GLenum type, const GLchar *source, GLint length);
 GLuint shader_link(GLuint vertex, GLuint fragment);
 
 /**
- * @brief Creates X11 fullscreen window
- * @param[out] display Opened display
- * @param width Requested window width
- * @param height Requested window height
- * @returns Window XID
- * @note If X11 support is not enabled, returns 0
- */
-EGLNativeWindowType window_create(EGLNativeDisplayType *display, uint16_t width, uint16_t height);
-
-/**
- * @brief Destroys X11 window and closes display
- * @param display X11 display to close
- * @param window X11 window XID to destroy
- * @note If X11 support is not enabled, does nothing
- */
-void window_destroy(EGLNativeDisplayType display, EGLNativeWindowType window);
-
-/**
  * @brief Creates EGL surface for native window
  * @param display EGL display to use
  * @param window Native window as returned by `window_create()`
@@ -70,5 +76,26 @@ void window_destroy(EGLNativeDisplayType display, EGLNativeWindowType window);
  * @returns EGL surface
  */
 EGLSurface surface_create(EGLDisplay display, EGLNativeWindowType window, EGLContext *context);
+
+/**
+ * @brief Load glyphs to font atlas
+ * @param atlas Atlas to load into
+ * @param font Font file path to use
+ * @param size Font size
+ * @return 1 on success, 0 on failure
+ */
+int atlas_load_glyphs(struct _atlas *atlas, const char *font, uint32_t size);
+
+/**
+ * @brief Creates geometry for given string
+ * @param atlas Atlas object to use
+ * @param[out] array Output geometry array
+ * @param scale_x Horizontal scale of the drawing surface
+ * @param scale_y Vertical scale of the drawing surface
+ * @param text Input string
+ * @return Number of elements written to array
+ * @note Array should have at least 24*strlen(text) elements.
+ */
+GLuint atlas_get_geometry(struct _atlas *atlas, GLfloat *array, float scale_x, float scale_y, const char *text);
 
 #endif /* GRAPHICS_UTILS_H */

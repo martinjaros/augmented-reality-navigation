@@ -31,7 +31,7 @@ static void usage()
     printf("Augmented reality navigation\n"
            "usage: arnav [--help] [--test[=<test>]] [--video=<device>] [--gps=<device>] [--imu=<device>] [--wpts=<filename>] [--font=<fontname>] [--calib=<calibname>] [--update-calib]\n"
            "   --help               Shows help\n"
-           "   --test[=<test>]      Executes unit tests\n"
+           "   --test <test>        Executes specified test (graphics, capture, gps, imu)\n"
            "   --video <device>     Sets video device to use (\"/dev/video*\")\n"
            "   --gps <device>       Sets GPS device to use (\"/dev/tty*\")\n"
            "   --imu <device>       Sets IMU device to use (\"/dev/i2c-*\")\n"
@@ -58,7 +58,7 @@ int main(int argc, char *argv[])
 
     static struct option options[] = {
         { "help",           no_argument,       NULL, 0 },
-        { "test",           optional_argument, NULL, 1 },
+        { "test",           required_argument, NULL, 1 },
         { "video",          required_argument, NULL, 2 },
         { "gps",            required_argument, NULL, 3 },
         { "imu",            required_argument, NULL, 4 },
@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
         switch(index)
         {
             case 0:  usage(); return EXIT_SUCCESS;
-            case 1:  test = optarg ? strdup(optarg) : (char*)-1; break;
+            case 1:  test = strdup(optarg); break;
             case 2:  cfg.videodev = strdup(optarg); break;
             case 3:  cfg.gpsdev = strdup(optarg); break;
             case 4:  cfg.imudev = strdup(optarg); break;
@@ -101,34 +101,47 @@ int main(int argc, char *argv[])
 
     if(test)
     {
-        // Execute tests
-        int counter = 0;
-
-        if((test == (char*)-1) || (strcmp(test, "capture") == 0))
+        if(strcmp(test, "capture") == 0)
         {
             INFO("Testing capture, videodev='%s'", cfg.videodev);
-            if(!test_capture(cfg.videodev, VIDEO_WIDTH, VIDEO_HEIGHT, 100)) ERROR("Capture test failed"); else counter++;
+            if(!test_capture(cfg.videodev, VIDEO_WIDTH, VIDEO_HEIGHT, 100))
+            {
+                ERROR("Capture test failed");
+                return EXIT_FAILURE;
+            }
         }
-
-        if((test == (char*)-1) || (strcmp(test, "gps") == 0))
+        else if(strcmp(test, "gps") == 0)
         {
             INFO("Testing GPS, gpsdev='%s'", cfg.gpsdev);
-            if(!test_gps(cfg.gpsdev, 20)) ERROR("GPS test failed"); else counter++;
+            if(!test_gps(cfg.gpsdev, 20))
+            {
+                ERROR("GPS test failed");
+                return EXIT_FAILURE;
+            }
         }
-
-        if((test == (char*)-1) || (strcmp(test, "imu") == 0))
+        else if(strcmp(test, "imu") == 0)
         {
             INFO("Testing IMU, imudev='%s'", cfg.imudev);
-            if(!test_imu(cfg.imudev, cfg.calibname, 50)) ERROR("IMU test failed"); else counter++;
+            if(!test_imu(cfg.imudev, cfg.calibname, 20))
+            {
+                ERROR("IMU test failed");
+                return EXIT_FAILURE;
+            }
         }
-
-        if((test == (char*)-1) || (strcmp(test, "graphics") == 0))
+        else if(strcmp(test, "graphics") == 0)
         {
             INFO("Testing graphics, fontname='%s'", cfg.fontname);
-            if(!test_graphics(cfg.fontname, VIDEO_WIDTH, VIDEO_HEIGHT, 100)) ERROR("Graphics test failed"); else counter++;
+            if(!test_graphics(cfg.fontname, VIDEO_WIDTH, VIDEO_HEIGHT, 100))
+            {
+                ERROR("Graphics test failed");
+                return EXIT_FAILURE;
+            }
         }
-
-        INFO("%d tests completed sucessfully", counter);
+        else
+        {
+            ERROR("Unknown test name `%s`", test);
+            return EXIT_FAILURE;
+        }
         return EXIT_SUCCESS;
     }
     else

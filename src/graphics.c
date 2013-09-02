@@ -17,25 +17,14 @@
 
 #include <stdlib.h>
 #include <assert.h>
-
-#include <ft2build.h>
-#include FT_FREETYPE_H
+#include <string.h>
 
 #include "debug.h"
 #include "graphics.h"
 #include "graphics-utils.h"
 
-#include "shaders.inc"
-
-/* Helper macro, returns higher of the two arguments */
-#define MAX(a,b) (((a)>(b))?(a):(b))
-
 struct _graphics
 {
-    /* Native types */
-    EGLNativeDisplayType native_display;
-    EGLNativeWindowType native_window;
-
     /* EGL surface and its size */
     EGLDisplay display;
     EGLSurface surface;
@@ -47,34 +36,35 @@ struct _graphics
     GLint attr_coord, uni_offset, uni_tex, uni_color, uni_mask;
 };
 
-struct _atlas
-{
-    GLuint texture, width, height;
-    struct
-    {
-        float left, top, width, height;
-        float tex_x, tex_y;
-        float advance_x, advance_y;
-    }
-    chars[96];
-};
-
 struct _drawable
 {
     // Drawable type
     enum { DRAWABLE_LABEL, DRAWABLE_IMAGE } type;
 
     // Vertex buffer
-    uint32_t vbo;
+    GLuint vbo;
 
     // Vertex counter
-    uint32_t num;
+    GLuint num;
 
     // Texture
-    uint32_t tex;
+    GLuint tex;
 
     // Colors
     GLfloat mask[4], color[4];
+};
+
+struct _drawable_image
+{
+    struct _drawable d;
+    GLuint width, height;
+};
+
+struct _drawable_label
+{
+    struct _drawable d;
+    graphics_t *g;
+    atlas_t *atlas;
 };
 
 /* Resource cleanup helper function */
@@ -93,13 +83,10 @@ static void cleanup(graphics_t *g)
        eglDestroySurface(g->display, g->surface);
    }
 
-   // Destroy window
-   if(g->native_window) window_destroy(g->native_display, g->native_window);
-
    free(g);
 }
 
-graphics_t *graphics_init(uint16_t width, uint16_t height)
+graphics_t *graphics_init(uint32_t window)
 {
     DEBUG("graphics_init()");
 
@@ -110,9 +97,8 @@ graphics_t *graphics_init(uint16_t width, uint16_t height)
         return NULL;
     }
 
-    // Create window
-    g->native_window = window_create(&g->native_display, width, height);
-    if((g->display = eglGetDisplay(g->native_display)) == NULL)
+    // Get display
+    if((g->display = eglGetDisplay(EGL_DEFAULT_DISPLAY)) == NULL)
     {
         WARN("Failed to get display");
         cleanup(g);
@@ -120,7 +106,7 @@ graphics_t *graphics_init(uint16_t width, uint16_t height)
     }
 
     // Create surface
-    if(!(g->surface = surface_create(g->display, g->native_window, &g->context)))
+    if(!(g->surface = surface_create(g->display, window, &g->context)))
     {
         WARN("Cannot create surface");
         cleanup(g);
@@ -128,6 +114,7 @@ graphics_t *graphics_init(uint16_t width, uint16_t height)
     }
 
     // Compile shader
+    #include "shaders.inc"
     if(!(g->vert = shader_compile(GL_VERTEX_SHADER, (GLchar*)src_shader_vert, src_shader_vert_len)) ||
        !(g->frag = shader_compile(GL_FRAGMENT_SHADER, (GLchar*)src_shader_frag, src_shader_frag_len)) ||
        !(g->prog = shader_link(g->vert, g->frag)))
@@ -177,13 +164,61 @@ graphics_t *graphics_init(uint16_t width, uint16_t height)
     return g;
 }
 
+uint32_t graphics_window_create(uint16_t width, uint16_t height)
+{
+    DEBUG("graphics_window_create()");
+#ifdef X11BUILD
+
+    // Open display
+    Display *display = XOpenDisplay(NULL);
+    if(!display)
+    {
+        WARN("Failed to open X display");
+        return 0;
+    }
+
+    // Create window
+    unsigned long color = BlackPixel(display, 0);
+    Window root = RootWindow(display, 0);
+    Window window = XCreateSimpleWindow(display, root, 0, 0, width, height, 0, color, color);
+    XMapWindow(display, window);
+    XFlush(display);
+    INFO("Created window 0x%x", (uint32_t)window);
+    return window;
+
+#else /* X11BUILD */
+    return (EGLNativeWindowType)0;
+#endif
+}
+
+atlas_t *graphics_atlas_create(const char *font, uint32_t size)
+{
+    DEBUG("graphics_atlas_create()");
+    assert(font != NULL);
+
+    atlas_t *atlas = malloc(sizeof(struct _atlas));
+    if(atlas == NULL)
+    {
+        WARN("Cannot allocate memory");
+        return NULL;
+    }
+
+    if(!atlas_load_glyphs(atlas, font, size))
+    {
+        WARN("Cannot load glyphs");
+        free(atlas);
+        return NULL;
+    }
+
+    return atlas;
+}
+
 int graphics_flush(graphics_t *g, const uint8_t *color)
 {
     DEBUG("graphics_flush()");
     assert(g != NULL);
 
-    int res = eglSwapBuffers(g->display, g->surface);
-
+    if(!eglSwapBuffers(g->display, g->surface)) return 0;
     if(color)
     {
         glClearColor(color[0] / 255.0, color[1] / 255.0, color[2] / 255.0, color[3] / 255.0);
@@ -198,7 +233,7 @@ int graphics_flush(graphics_t *g, const uint8_t *color)
         return 0;
     }
 
-    return res;
+    return 1;
 }
 
 void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y)
@@ -229,158 +264,36 @@ void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y)
     glDrawArrays(GL_TRIANGLES, 0, d->num);
 }
 
-atlas_t *graphics_atlas_create(const char *font, uint32_t size)
-{
-    DEBUG("graphics_atlas_create()");
-    int i;
-
-    assert(font != NULL);
-    assert(size > 0);
-
-    atlas_t *atlas = malloc(sizeof(struct _atlas));
-    if(atlas == NULL)
-    {
-        WARN("Cannot allocate memory");
-        return NULL;
-    }
-
-    FT_Library ft;
-    FT_Face face;
-    if(FT_Init_FreeType(&ft))
-    {
-        WARN("Failed to init FreeType");
-        free(atlas);
-        return NULL;
-    }
-
-    if(FT_New_Face(ft, font, 0, &face))
-    {
-        WARN("Failed to load font `%s`", font);
-        FT_Done_FreeType(ft);
-        free(atlas);
-        return NULL;
-    }
-
-    if(FT_Set_Pixel_Sizes(face, 0, size))
-    {
-        WARN("Failed to set font size");
-        FT_Done_FreeType(ft);
-        free(atlas);
-        return NULL;
-    }
-
-    FT_GlyphSlot glyph = face->glyph;
-    int row_width = 0, row_height = 0;
-
-    // Calculate texture size
-    atlas->width = 0;
-    atlas->height = 0;
-    for(i = 0; i < 96; i++)
-    {
-        if(FT_Load_Char(face, i + 32, FT_LOAD_RENDER))
-        {
-            WARN("Failed to load character %d", i + 32);
-            FT_Done_FreeType(ft);
-            free(atlas);
-            return NULL;
-        }
-
-        // Start new line if needed
-        if(row_width + glyph->bitmap.width + 1 >= 1024)
-        {
-            atlas->width = MAX(atlas->width, row_width);
-            atlas->height += row_height;
-            row_width = 0;
-            row_height = 0;
-        }
-
-        row_width += glyph->bitmap.width + 1;
-        row_height = MAX(row_height, glyph->bitmap.rows);
-    }
-    atlas->width = MAX(atlas->width, row_width);
-    atlas->height += row_height;
-
-    // Create texture
-    glGenTextures(1, &atlas->texture);
-    glBindTexture(GL_TEXTURE_2D, atlas->texture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, atlas->width, atlas->height, 0, GL_ALPHA, GL_UNSIGNED_BYTE, 0);
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    int offset_x = 0;
-    int offset_y = 0;
-
-    // Load characters
-    row_height = 0;
-    for(i = 0; i < 96; i++)
-    {
-        if(FT_Load_Char(face, i + 32, FT_LOAD_RENDER))
-        {
-            WARN("Failed to load character %d", i + 32);
-            FT_Done_FreeType(ft);
-            free(atlas);
-            return NULL;
-        }
-
-        // Start new line if needed
-        if (offset_x + glyph->bitmap.width + 1 >= 1024)
-        {
-            offset_y += row_height;
-            row_height = 0;
-            offset_x = 0;
-        }
-
-        // Load texture
-        glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_y, glyph->bitmap.width, glyph->bitmap.rows,
-                        GL_ALPHA, GL_UNSIGNED_BYTE, glyph->bitmap.buffer);
-
-        atlas->chars[i].advance_x = glyph->advance.x >> 6;
-        atlas->chars[i].advance_y = glyph->advance.y >> 6;
-        atlas->chars[i].width = glyph->bitmap.width;
-        atlas->chars[i].height = glyph->bitmap.rows;
-        atlas->chars[i].left = glyph->bitmap_left;
-        atlas->chars[i].top = glyph->bitmap_top;
-        atlas->chars[i].tex_x = offset_x / (float)atlas->width;
-        atlas->chars[i].tex_y = offset_y / (float)atlas->height;
-
-        row_height = MAX(row_height, glyph->bitmap.rows);
-        offset_x += glyph->bitmap.width + 1;
-    }
-
-    // Clean FreeType
-    FT_Done_FreeType(ft);
-
-    return atlas;
-}
-
-drawable_t *graphics_label_create(graphics_t *g)
+drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas)
 {
     DEBUG("graphics_label_create()");
-    (void)g;
+    assert(g != NULL);
+    assert(atlas != NULL);
 
-    drawable_t *d = malloc(sizeof(struct _drawable));
-    if(d == NULL)
+    struct _drawable_label *label = malloc(sizeof(struct _drawable_label));
+    if(label == NULL)
     {
         WARN("Cannot allocate memory");
         return NULL;
     }
 
-    d->type = DRAWABLE_LABEL;
-    d->mask[0] = 0;
-    d->mask[1] = 0;
-    d->mask[2] = 0;
-    d->mask[3] = 0;
-    d->color[0] = 0;
-    d->color[1] = 0;
-    d->color[2] = 0;
-    d->color[3] = 0;
-    d->num = 0;
+    label->d.type = DRAWABLE_LABEL;
+    label->d.mask[0] = 0;
+    label->d.mask[1] = 0;
+    label->d.mask[2] = 0;
+    label->d.mask[3] = 1;
+    label->d.color[0] = 0;
+    label->d.color[1] = 0;
+    label->d.color[2] = 0;
+    label->d.color[3] = 0;
+    label->d.num = 0;
 
-    glGenBuffers(1, &d->vbo);
-    return d;
+    glGenBuffers(1, &label->d.vbo);
+    label->d.tex = atlas->texture;
+    label->atlas = atlas;
+    label->g = g;
+
+    return (drawable_t*)label;
 }
 
 drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height)
@@ -388,23 +301,23 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
     DEBUG("graphics_image_create()");
     assert(g != NULL);
 
-    drawable_t *d = malloc(sizeof(struct _drawable));
-    if(d == NULL)
+    struct _drawable_image *image = malloc(sizeof(struct _drawable_image));
+    if(image == NULL)
     {
         WARN("Cannot allocate memory");
         return NULL;
     }
 
-    d->type = DRAWABLE_IMAGE;
-    d->mask[0] = 1;
-    d->mask[1] = 1;
-    d->mask[2] = 1;
-    d->mask[3] = 0;
-    d->color[0] = 0;
-    d->color[1] = 0;
-    d->color[2] = 0;
-    d->color[3] = 1;
-    d->num = 6;
+    image->d.type = DRAWABLE_IMAGE;
+    image->d.mask[0] = 1;
+    image->d.mask[1] = 1;
+    image->d.mask[2] = 1;
+    image->d.mask[3] = 0;
+    image->d.color[0] = 0;
+    image->d.color[1] = 0;
+    image->d.color[2] = 0;
+    image->d.color[3] = 1;
+    image->d.num = 6;
 
     // Calculate verticies
     float right = 2.0 / g->width * width;
@@ -420,94 +333,75 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
     };
 
     // Buffer data
-    glGenTextures(1, &d->tex);
-    glGenBuffers(1, &d->vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
+    glGenTextures(1, &(image->d.tex));
+    glGenBuffers(1, &(image->d.vbo));
+    glBindBuffer(GL_ARRAY_BUFFER, image->d.vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(array), array, GL_DYNAMIC_DRAW);
+    image->width = width;
+    image->height = height;
 
-    return d;
+    return (drawable_t*)image;
 }
 
-void graphics_label_set_text(graphics_t *g, drawable_t *d, atlas_t *atlas, const char *text)
+void graphics_label_set_text(drawable_t *d, enum text_anchor anchor, const char *text)
 {
     DEBUG("graphics_label_set_text()");
-    assert(g != NULL);
     assert(d != NULL);
-    assert(atlas != NULL);
     assert(text != NULL);
     assert(d->type == DRAWABLE_LABEL);
+    struct _drawable_label *label = (struct _drawable_label*)d;
 
-    int num = 0;
-    float pos_x = 0;
-    float pos_y = 0;
-    float scale_x = 2.0 / g->width;
-    float scale_y = 2.0 / g->height;
+    GLfloat array[strlen(text) * 24];
+    GLuint num = atlas_get_geometry(label->atlas, array, 2.0 / label->g->width, 2.0 / label->g->height, text);
 
-    GLfloat array[4 * 6 * strlen(text)];
-
-    uint8_t *pc = (uint8_t*)text;
-    for(; *pc; pc++)
+    // Calculate offset for anchor
+    if(num && (anchor != ANCHOR_LEFT_BOTTOM))
     {
-        uint8_t c = *pc - 32;
-        float left = pos_x + atlas->chars[c].left * scale_x;
-        float top = pos_y - atlas->chars[c].top * scale_y;
-        float width = atlas->chars[c].width * scale_x;
-        float height = atlas->chars[c].height * scale_y;
+        float offset_x = 0, offset_y = 0;
+        switch(anchor)
+        {
+            case ANCHOR_LEFT_BOTTOM:
+            case ANCHOR_LEFT_TOP:
+                offset_y = array[num - 3] - array[1];
+                break;
 
-        pos_x += atlas->chars[c].advance_x * scale_x;
-        pos_y += atlas->chars[c].advance_y * scale_y;
-        if (!width || !height) continue;
+            case ANCHOR_CENTER_TOP:
+                offset_x = (array[num - 4] - array[0]) / 2.0;
+                offset_y = array[num - 3] - array[1];
+                break;
 
-        array[num + 0] = left;
-        array[num + 1] = -top;
-        array[num + 2] = atlas->chars[c].tex_x;
-        array[num + 3] = atlas->chars[c].tex_y;
-        num += 4;
+            case ANCHOR_RIGHT_TOP:
+                offset_x = array[num - 4] - array[0];
+                offset_y = array[num - 3] - array[1];
+                break;
 
-        array[num + 0] = left + width;
-        array[num + 1] = -top;
-        array[num + 2] = atlas->chars[c].tex_x + atlas->chars[c].width / atlas->width;
-        array[num + 3] = atlas->chars[c].tex_y;
-        num += 4;
+            case ANCHOR_RIGHT_BOTTOM:
+                offset_x = array[num - 4] - array[0];
+                break;
 
-        array[num + 0] = left;
-        array[num + 1] = -top - height;
-        array[num + 2] = atlas->chars[c].tex_x;
-        array[num + 3] = atlas->chars[c].tex_y + atlas->chars[c].height / atlas->height;
-        num += 4;
+            case ANCHOR_CENTER_BOTTOM:
+                offset_x = (array[num - 4] - array[0]) / 2.0;
+                break;
+        }
 
-        array[num + 0] = left + width;
-        array[num + 1] = -top;
-        array[num + 2] = atlas->chars[c].tex_x + atlas->chars[c].width / atlas->width;
-        array[num + 3] = atlas->chars[c].tex_y;
-        num += 4;
-
-        array[num + 0] = left;
-        array[num + 1] = -top - height;
-        array[num + 2] = atlas->chars[c].tex_x;
-        array[num + 3] = atlas->chars[c].tex_y + atlas->chars[c].height / atlas->height;
-        num += 4;
-
-        array[num + 0] = left + width;
-        array[num + 1] = -top - height;
-        array[num + 2] = atlas->chars[c].tex_x + atlas->chars[c].width / atlas->width;
-        array[num + 3] = atlas->chars[c].tex_y + atlas->chars[c].height / atlas->height;
-        num += 4;
+        // Apply offset
+        int i;
+        for(i = 0; i < num / 4; i++)
+        {
+            array[i * 4 + 0] -= offset_x;
+            array[i * 4 + 1] += offset_y;
+        }
     }
 
-    // Buffer data
-    glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
+    // Buffer array
+    glBindBuffer(GL_ARRAY_BUFFER, label->d.vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(array), array, GL_DYNAMIC_DRAW);
-    d->num = num / 4;
-
-    // Update texture
-    d->tex = atlas->texture;
+    label->d.num = num / 4;
 }
 
-void graphics_label_set_color(graphics_t *g, drawable_t *d, uint8_t color[4])
+void graphics_label_set_color(drawable_t *d, uint8_t color[4])
 {
     DEBUG("graphics_label_set_color()");
-    (void)g;
 
     assert(d != NULL);
     assert(color != NULL);
@@ -518,15 +412,16 @@ void graphics_label_set_color(graphics_t *g, drawable_t *d, uint8_t color[4])
     d->mask[3] = color[3] / 255.0;
 }
 
-void graphics_image_set_bitmap(graphics_t *g, drawable_t *d, const void *buffer)
+void graphics_image_set_bitmap(drawable_t *d, const void *buffer)
 {
     DEBUG("graphics_image_set_bitmap()");
     assert(d != NULL);
     assert(buffer != NULL);
     assert(d->type == DRAWABLE_IMAGE);
 
-    glBindTexture(GL_TEXTURE_2D, d->tex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, g->width, g->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
+    struct _drawable_image *image = (struct _drawable_image*)d;
+    glBindTexture(GL_TEXTURE_2D, image->d.tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);

@@ -1,3 +1,8 @@
+ * simplified window creation
+ * cleaned graphics API
+ * font atlas utilities simplified and moved to graphics-utils
+ * added static library output to build sequence
+ * anchor option for labels
  * fixed video capture, more capture testing
  * added software pipe for IMU input
  * improved DCM algorithm, external calibration

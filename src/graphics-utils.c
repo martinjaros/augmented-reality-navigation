@@ -22,6 +22,9 @@
 #include "debug.h"
 #include "graphics-utils.h"
 
+/* Helper macro, returns higher of the two arguments */
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 GLuint shader_compile(GLenum type, const GLchar *source, GLint length)
 {
     DEBUG("shader_compile()");
@@ -79,71 +82,6 @@ GLuint shader_link(GLuint vertex, GLuint fragment)
     return program;
 }
 
-EGLNativeWindowType window_create(EGLNativeDisplayType *display, uint16_t width, uint16_t height)
-{
-    DEBUG("window_create()");
-#ifdef X11BUILD
-
-    // Open display
-    *display = XOpenDisplay(NULL);
-    if(!*display)
-    {
-        WARN("Failed to open X display");
-        return 0;
-    }
-
-    // Create window
-    unsigned long color = BlackPixel(*display, 0);
-    Window root = RootWindow(*display, 0);
-    Window window = XCreateSimpleWindow(*display, root, 0, 0, width, height, 0, color, color);
-    XMapWindow(*display, window);
-
-#if FULLSCREEN
-    Atom state = XInternAtom(*display, "_NET_WM_STATE", False);
-    Atom fullscreen = XInternAtom(*display, "_NET_WM_STATE_FULLSCREEN", False);
-    if(!window)
-    {
-        WARN("Failed to create X11 window");
-        return 0;
-    }
-
-    XEvent event;
-    memset(&event, 0, sizeof(event));
-    event.type = ClientMessage;
-    event.xclient.window = window;
-    event.xclient.message_type = state;
-    event.xclient.format = 32;
-    event.xclient.data.l[0] = 1;
-    event.xclient.data.l[1] = fullscreen;
-    event.xclient.data.l[2] = 0;
-    XSendEvent(*display, root, False, SubstructureRedirectMask | SubstructureNotifyMask, &event);
-#endif /* FULLSCREEN */
-
-    XFlush(*display);
-    INFO("Created window 0x%x", (unsigned int)window);
-
-    return window;
-
-#else
-    *display = EGL_DEFAULT_DISPLAY;
-    return (EGLNativeWindowType)0;
-#endif /* X11BUILD */
-}
-
-void window_destroy(EGLNativeDisplayType display, EGLNativeWindowType window)
-{
-    DEBUG("window_destroy()");
-#ifdef X11BUILD
-
-    assert(display != NULL);
-    assert(window != 0);
-    XMapWindow(display, window);
-    XDestroyWindow(display, window);
-    XCloseDisplay(display);
-
-#endif /* X11BUILD */
-}
-
 EGLSurface surface_create(EGLDisplay display, EGLNativeWindowType window, EGLContext *context)
 {
     DEBUG("surface_create()");
@@ -193,4 +131,167 @@ EGLSurface surface_create(EGLDisplay display, EGLNativeWindowType window, EGLCon
     }
 
     return surface;
+}
+
+int atlas_load_glyphs(struct _atlas *atlas, const char *font, uint32_t size)
+{
+    DEBUG("atlas_load_glyphs()");
+    assert(atlas != NULL);
+
+    FT_Library ft;
+    FT_Face face;
+    if(FT_Init_FreeType(&ft))
+    {
+        WARN("Failed to init FreeType");
+        return 0;
+    }
+
+    if(FT_New_Face(ft, font, 0, &face))
+    {
+        WARN("Failed to load font `%s`", font);
+        goto error;
+    }
+
+    if(FT_Select_Charmap(face, FT_ENCODING_UNICODE))
+    {
+        WARN("Failed to select charmap");
+        goto error;
+    }
+
+    if(FT_Set_Pixel_Sizes(face, 0, size))
+    {
+        WARN("Failed to set font size");
+        goto error;
+    }
+
+    // Create texture
+    glGenTextures(1, &atlas->texture);
+    glBindTexture(GL_TEXTURE_2D, atlas->texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, ATLAS_TEXTURE_WIDTH, ATLAS_TEXTURE_HEIGHT, 0, GL_ALPHA, GL_UNSIGNED_BYTE, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    int row_height = 0;
+    int offset_x = 0;
+    int offset_y = 0;
+
+    int i;
+    for(i = 0; i < ATLAS_MAP_LENGTH; i++)
+    {
+        if(FT_Load_Char(face, i + ATLAS_MAP_OFFSET, FT_LOAD_RENDER))
+        {
+            WARN("Failed to load character %d", i + ATLAS_MAP_OFFSET);
+            return 0;
+        }
+
+        // Start new line if needed
+        if(offset_x + face->glyph->bitmap.width + 1 >= ATLAS_TEXTURE_WIDTH)
+        {
+            offset_y += row_height;
+            row_height = 0;
+            offset_x = 0;
+
+            if(offset_y + face->glyph->bitmap.rows + 1 >= ATLAS_TEXTURE_HEIGHT)
+            {
+                WARN("Atlas texture full at %d of %d characters", i, ATLAS_MAP_LENGTH);
+                return 0;
+            }
+        }
+
+        // Load glyph
+        glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_y, face->glyph->bitmap.width, face->glyph->bitmap.rows,
+                        GL_ALPHA, GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer);
+        atlas->chars[i].advance_x = face->glyph->advance.x >> 6;
+        atlas->chars[i].advance_y = face->glyph->advance.y >> 6;
+        atlas->chars[i].width = face->glyph->bitmap.width;
+        atlas->chars[i].height = face->glyph->bitmap.rows;
+        atlas->chars[i].left = face->glyph->bitmap_left;
+        atlas->chars[i].top = face->glyph->bitmap_top;
+        atlas->chars[i].tex_x = offset_x / (float)ATLAS_TEXTURE_WIDTH;
+        atlas->chars[i].tex_y = offset_y / (float)ATLAS_TEXTURE_HEIGHT;
+        row_height = MAX(row_height, face->glyph->bitmap.rows);
+        offset_x += face->glyph->bitmap.width + 1;
+    }
+
+    INFO("Atlas used %d rows of %d available", offset_y + face->glyph->bitmap.rows + 1, ATLAS_TEXTURE_WIDTH);
+    FT_Done_FreeType(ft);
+    return 1;
+
+error:
+    FT_Done_FreeType(ft);
+    return 0;
+}
+
+GLuint atlas_get_geometry(struct _atlas *atlas, GLfloat *array, float scale_x, float scale_y, const char *text)
+{
+    DEBUG("atlas_get_geometry()");
+    assert(atlas != NULL);
+    assert(array != NULL);
+    assert(text != NULL);
+
+    int num = 0;
+    float pos_x = 0;
+    float pos_y = 0;
+
+    uint8_t *pc = (uint8_t*)text;
+    for(; *pc; pc++)
+    {
+        uint8_t c = *pc - ATLAS_MAP_OFFSET;
+        if(c >= ATLAS_MAP_LENGTH) continue;
+        float left = pos_x + atlas->chars[c].left * scale_x;
+        float top = pos_y - atlas->chars[c].top * scale_y;
+        float width = atlas->chars[c].width * scale_x;
+        float height = atlas->chars[c].height * scale_y;
+
+        pos_x += atlas->chars[c].advance_x * scale_x;
+        pos_y += atlas->chars[c].advance_y * scale_y;
+        if (!width || !height) continue;
+
+        // Left bottom
+        array[num + 0] = left;
+        array[num + 1] = -top;
+        array[num + 2] = atlas->chars[c].tex_x;
+        array[num + 3] = atlas->chars[c].tex_y;
+        num += 4;
+
+        // Right bottom
+        array[num + 0] = left + width;
+        array[num + 1] = -top;
+        array[num + 2] = atlas->chars[c].tex_x + atlas->chars[c].width / ATLAS_TEXTURE_WIDTH;
+        array[num + 3] = atlas->chars[c].tex_y;
+        num += 4;
+
+        // Left top
+        array[num + 0] = left;
+        array[num + 1] = -top - height;
+        array[num + 2] = atlas->chars[c].tex_x;
+        array[num + 3] = atlas->chars[c].tex_y + atlas->chars[c].height / ATLAS_TEXTURE_HEIGHT;
+        num += 4;
+
+        // Right bottom
+        array[num + 0] = left + width;
+        array[num + 1] = -top;
+        array[num + 2] = atlas->chars[c].tex_x + atlas->chars[c].width / ATLAS_TEXTURE_WIDTH;
+        array[num + 3] = atlas->chars[c].tex_y;
+        num += 4;
+
+        // Left top
+        array[num + 0] = left;
+        array[num + 1] = -top - height;
+        array[num + 2] = atlas->chars[c].tex_x;
+        array[num + 3] = atlas->chars[c].tex_y + atlas->chars[c].height / ATLAS_TEXTURE_HEIGHT;
+        num += 4;
+
+        // Right top
+        array[num + 0] = left + width;
+        array[num + 1] = -top - height;
+        array[num + 2] = atlas->chars[c].tex_x + atlas->chars[c].width / ATLAS_TEXTURE_WIDTH;
+        array[num + 3] = atlas->chars[c].tex_y + atlas->chars[c].height / ATLAS_TEXTURE_HEIGHT;
+        num += 4;
+    }
+
+    return num;
 }

@@ -114,8 +114,8 @@ int gps_read(int fd, struct gpsdata *data)
     if(sscanf(buf, "$GPRMB,A,%f,%c,%m[^,],%m[^,],%2f%f,%c,%3f%f,%c,%f,%f,%f,%*s",
               &xte, &xte_dir, &orig, &dest, &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &dst, &trk, &spd) == 13)
     {
-        memcpy(data->orig_name, orig, sizeof(data->orig_name));
-        memcpy(data->dest_name, dest, sizeof(data->dest_name));
+        strncpy(data->orig_name, orig, sizeof(data->orig_name));
+        strncpy(data->dest_name, dest, sizeof(data->dest_name));
         free(orig);
         free(dest);
 

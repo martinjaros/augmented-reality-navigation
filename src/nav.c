@@ -123,6 +123,8 @@ wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t 
             }
             set->next = NULL;
             set->num = 0;
+
+            INFO("Allocated next chunk with %d elements", CHUNK_SIZE);
         }
 
         struct _wpt *wpt = &set->wpts[set->num];
@@ -149,9 +151,9 @@ wpt_iter *nav_load(const char *filename, graphics_t *g, atlas_t *atlas, uint8_t 
               wpt->lat, wpt->lon, wpt->alt, label);
 
         // Create label
-        wpt->label = graphics_label_create(g);
-        graphics_label_set_text(g, wpt->label, atlas, label);
-        graphics_label_set_color(g, wpt->label, color);
+        wpt->label = graphics_label_create(g, atlas);
+        graphics_label_set_text(wpt->label, ANCHOR_CENTER_BOTTOM, label);
+        graphics_label_set_color(wpt->label, color);
         free(label);
 
         // Increment counter
@@ -185,6 +187,8 @@ int nav_iter(wpt_iter *iter, const struct imudata *imudata, const struct gpsdata
     {
         if(iter->current->next == NULL) return 0;
         iter->current = iter->current->next;
+
+        INFO("Iterator switched to next chunk");
     }
 
     // Get current waypoint from iterator
@@ -210,6 +214,7 @@ int nav_iter(wpt_iter *iter, const struct imudata *imudata, const struct gpsdata
     res->y = hangle * sinz - vangle * cosz;
     res->label = wpt->label;
 
+    INFO("Projecting waypoint %d in x = %lf, y = %lf, distance = %lf", iter->index - 1, res->x, res->y, dist / 1000);
     return 1;
 }
 

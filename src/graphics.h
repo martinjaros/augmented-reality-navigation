@@ -22,11 +22,11 @@
  * @code
  * int main ()
  * {
- *     graphics_t *g = graphics_init();
- *     atlas_t *atlas = graphics_atlas_create("FreeSans.ttf", 20);
+ *     graphics_t *g = graphics_init(graphics_window_create(640, 480));
+ *     atlas_t *atlas = atlas_create("FreeSans.ttf", 20);
  *
- *     drawable_t *label = graphics_label_create(g);
- *     graphics_label_set_text(g, label, atlas, "Hello World");
+ *     drawable_t *label = graphics_label_create(g, atlas);
+ *     graphics_label_set_text(label, 0, "Hello World");
  *
  *     for(;;)
  *     {
@@ -35,7 +35,7 @@
  *     }
  *
  *     graphics_drawable_free(label);
- *     graphics_atlas_free(atlas);
+ *     atlas_free(atlas);
  *     graphics_free(g);
  *
  *     return(0);
@@ -54,22 +54,50 @@
 typedef struct _graphics graphics_t;
 
 /**
- * @brief Atlas of characters
- */
-typedef struct _atlas atlas_t;
-
-/**
  * @brief Drawable object
  */
 typedef struct _drawable drawable_t;
 
 /**
+ * @brief Atlas of characters
+ */
+typedef struct _atlas atlas_t;
+
+/**
+ * @brief Anchor options for text generation
+ */
+enum text_anchor
+{
+    ANCHOR_LEFT_BOTTOM = 0,
+    ANCHOR_LEFT_TOP,
+    ANCHOR_CENTER_TOP,
+    ANCHOR_RIGHT_TOP,
+    ANCHOR_RIGHT_BOTTOM,
+    ANCHOR_CENTER_BOTTOM
+};
+
+/**
  * @brief Initializes graphics
- * @param width Requested surface width
- * @param height Requested surface height
+ * @param window Window ID as returned by `graphics_window_create()`
  * @return Internal graphics state
  */
-graphics_t *graphics_init(uint16_t width, uint16_t height);
+graphics_t *graphics_init(uint32_t window);
+
+/**
+ * @brief Creates native window of specified size
+ * @param width Requested width
+ * @param height Requested height
+ * @return Window ID
+ */
+uint32_t graphics_window_create(uint16_t width, uint16_t height);
+
+/**
+ * @brief Creates font atlas
+ * @param font Font file path to use
+ * @param size Font size
+ * @return Atlas structure
+ */
+atlas_t *graphics_atlas_create(const char *font, uint32_t size);
 
 /**
  * @brief Flushes framebuffer
@@ -89,19 +117,12 @@ int graphics_flush(graphics_t *g, const uint8_t *color);
 void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y);
 
 /**
- * @brief Creates font atlas
- * @param font Font file path to use
- * @param size Font size
- * @return Atlas structure
- */
-atlas_t *graphics_atlas_create(const char *font, uint32_t size);
-
-/**
  * @brief Creates drawable label
  * @param g Internal graphics state as returned by `graphics_init()`
+ * @param atlas Character atlas
  * @return Drawable object
  */
-drawable_t *graphics_label_create(graphics_t *g);
+drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas);
 
 /**
  * @brief Creates drawable image
@@ -114,29 +135,26 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
 
 /**
  * @brief Updates label text
- * @param g Internal graphics state as returned by `graphics_init()`
  * @param label Label drawable to update
- * @param atlas Character atlas
+ * @param anchor Anchor used for geometry generation
+ * @param label Label drawable to update
  * @param text NULL terminated string to use
  */
-void graphics_label_set_text(graphics_t *g, drawable_t *label, atlas_t *atlas, const char *text);
-
+void graphics_label_set_text(drawable_t *label, enum text_anchor anchor, const char *text);
 
 /**
  * @brief Updates label color
- * @param g Internal graphics state as returned by `graphics_init()`
  * @param label Label drawable to update
  * @param color Font color in RGBA format
  */
-void graphics_label_set_color(graphics_t *g, drawable_t *label, uint8_t color[4]);
+void graphics_label_set_color(drawable_t *label, uint8_t color[4]);
 
 /**
  * @brief Updates image bitmap
- * @param g Internal graphics state as returned by `graphics_init()`
  * @param image Image drawable to update
  * @param buffer Pixel data buffer in RGBx format (width * height * 32)
  */
-void graphics_image_set_bitmap(graphics_t *g, drawable_t *image, const void *buffer);
+void graphics_image_set_bitmap(drawable_t *image, const void *buffer);
 
 /**
  * @brief Releases resources of the specified object

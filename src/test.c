@@ -32,14 +32,14 @@ int test_graphics(const char *font, uint16_t width, uint16_t height, int loops)
 
     assert(font != NULL);
 
-    graphics_t *g = graphics_init(width, height);
+    graphics_t *g = graphics_init(graphics_window_create(width, height));
     if(g == NULL)
     {
         ERROR("Cannot initialize graphics");
         return 0;
     }
 
-    atlas_t *atlas = graphics_atlas_create(font, 50);
+    atlas_t *atlas = graphics_atlas_create(font, 36);
     if(atlas == NULL)
     {
         ERROR("Cannot create font atlas");
@@ -47,7 +47,7 @@ int test_graphics(const char *font, uint16_t width, uint16_t height, int loops)
         return 0;
     }
 
-    drawable_t *label = graphics_label_create(g);
+    drawable_t *label = graphics_label_create(g, atlas);
     if(label == NULL)
     {
         ERROR("Cannot create label");
@@ -55,13 +55,13 @@ int test_graphics(const char *font, uint16_t width, uint16_t height, int loops)
         graphics_free(g);
         return 0;
     }
-    graphics_label_set_text(g, label, atlas, "Hello World");
-    graphics_label_set_color(g, label, (uint8_t*)"\xFF\x00\x00\xFF");
+    graphics_label_set_text(label, ANCHOR_LEFT_TOP, "Hello World");
+    graphics_label_set_color(label, (uint8_t*)"\xFF\x00\x00\xFF");
 
     int i;
     for(i = 0; i < loops; i++)
     {
-        graphics_draw(g, label, 100, 100);
+        graphics_draw(g, label, 10, 10);
         if(!graphics_flush(g, (uint8_t*)"\x7F\x7F\xFF\x00"))
         {
             WARN("Unable to draw");
@@ -131,7 +131,7 @@ int test_imu(const char *devname, const char *calibname, int loops)
     int i;
     for(i = 0; i < loops; i++)
     {
-        usleep(100000);
+        usleep(1000000);
 
         struct imudata data = { };
         if(!imu_read(imu, &data))
@@ -152,7 +152,7 @@ int test_capture(const char *devname, uint16_t width, uint16_t height, int loops
 
     assert(devname != NULL);
 
-    graphics_t *g = graphics_init(width, height);
+    graphics_t *g = graphics_init(graphics_window_create(width, height));
     if(g == NULL)
     {
         ERROR("Cannot initialize graphics");
@@ -172,6 +172,8 @@ int test_capture(const char *devname, uint16_t width, uint16_t height, int loops
     if(fd < 0)
     {
         ERROR("Cannot start video capture");
+        graphics_drawable_free(image);
+        graphics_free(g);
         return 0;
     }
 
@@ -188,7 +190,7 @@ int test_capture(const char *devname, uint16_t width, uint16_t height, int loops
         size_t bytesused;
         int index = capture_pop(fd, &bytesused);
         assert(bytesused >= 4 * width * height);
-        graphics_image_set_bitmap(g, image, buffers[index].start);
+        graphics_image_set_bitmap(image, buffers[index].start);
         graphics_draw(g, image, 0, 0);
         if(!graphics_flush(g, NULL))
         {

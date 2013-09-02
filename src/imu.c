@@ -109,15 +109,15 @@ static void matrix_orthogonalize_and_rotate(double m[9], double rx, double ry, d
     };
 
     // Rotate
-    m[0] = mag[0] + rz*prod[3] - ry*acc[6];
-    m[1] = mag[1] + rz*prod[4] - ry*acc[7];
-    m[2] = mag[2] + rz*prod[5] - ry*acc[8];
-    m[3] = (rx*ry-rz)*mag[0] + (rx*ry*rz+1)*prod[3] + rx*acc[6];
-    m[4] = (rx*ry-rz)*mag[1] + (rx*ry*rz+1)*prod[4] + rx*acc[7];
-    m[5] = (rx*ry-rz)*mag[2] + (rx*ry*rz+1)*prod[5] + rx*acc[8];
-    m[6] = (rx*rz+ry)*mag[0] + (ry*rz-rx)*prod[3] + acc[6];
-    m[7] = (rx*rz+ry)*mag[1] + (ry*rz-rx)*prod[4] + acc[7];
-    m[8] = (rx*rz+ry)*mag[2] + (ry*rz-rx)*prod[5] + acc[8];
+    m[0] = mag[0] + rz*prod[0] - ry*acc[0];
+    m[1] = mag[1] + rz*prod[1] - ry*acc[1];
+    m[2] = mag[2] + rz*prod[2] - ry*acc[2];
+    m[3] = (rx*ry-rz)*mag[0] + (rx*ry*rz+1)*prod[0] + rx*acc[0];
+    m[4] = (rx*ry-rz)*mag[1] + (rx*ry*rz+1)*prod[1] + rx*acc[1];
+    m[5] = (rx*ry-rz)*mag[2] + (rx*ry*rz+1)*prod[2] + rx*acc[2];
+    m[6] = (rx*rz+ry)*mag[0] + (ry*rz-rx)*prod[0] + acc[0];
+    m[7] = (rx*rz+ry)*mag[1] + (ry*rz-rx)*prod[1] + acc[1];
+    m[8] = (rx*rz+ry)*mag[2] + (ry*rz-rx)*prod[2] + acc[2];
 }
 
 /* Select helper function */

@@ -61,6 +61,6 @@
 #define FONT_COLOR        { 0, 0, 0, 255 }
 
 // Font size
-#define FONT_SIZE         12
+#define FONT_SIZE         14
 
 #endif /* CONFIG_H */

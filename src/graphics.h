@@ -22,16 +22,16 @@
  * @code
  * int main ()
  * {
- *     graphics_t *g = graphics_init(graphics_window_create(640, 480));
- *     atlas_t *atlas = atlas_create("FreeSans.ttf", 20);
+ *     graphics_t *g = graphics_init(0);
+ *     atlas_t *atlas = graphics_atlas_create("FreeSans.ttf", 20);
  *
  *     drawable_t *label = graphics_label_create(g, atlas);
  *     graphics_label_set_text(label, 0, "Hello World");
  *
  *     for(;;)
  *     {
- *         graphics_draw(g, label, 10, 10);
- *         graphics_flush(g, NULL);
+ *         graphics_draw(g, label, 10, 10, 1, 0);
+ *         graphics_flush(g, "\x00\x00\x00");
  *     }
  *
  *     graphics_drawable_free(label);
@@ -64,94 +64,91 @@ typedef struct _drawable drawable_t;
 typedef struct _atlas atlas_t;
 
 /**
- * @brief Anchor options for text generation
+ * @brief Anchor options
  */
-enum text_anchor
+enum anchor_types
 {
     ANCHOR_LEFT_BOTTOM = 0,
     ANCHOR_LEFT_TOP,
     ANCHOR_CENTER_TOP,
     ANCHOR_RIGHT_TOP,
     ANCHOR_RIGHT_BOTTOM,
-    ANCHOR_CENTER_BOTTOM
+    ANCHOR_CENTER_BOTTOM,
+    ANCHOR_CENTER
 };
 
 /**
  * @brief Initializes graphics
- * @param window Window ID as returned by `graphics_window_create()`
- * @return Internal graphics state
+ * @param window native window id
+ * @return Internal graphics object
  */
 graphics_t *graphics_init(uint32_t window);
 
 /**
- * @brief Creates native window of specified size
- * @param width Requested width
- * @param height Requested height
- * @return Window ID
- */
-uint32_t graphics_window_create(uint16_t width, uint16_t height);
-
-/**
  * @brief Creates font atlas
- * @param font Font file path to use
+ * @param font TTF font file to use
  * @param size Font size
- * @return Atlas structure
+ * @return Atlas object
  */
 atlas_t *graphics_atlas_create(const char *font, uint32_t size);
 
 /**
- * @brief Flushes framebuffer
- * @param g Internal graphics state as returned by `graphics_init()`
- * @param color If not NULL, this is a RBGA color used to clear the screen
+ * @brief Swaps framebuffers
+ * @param g Internal graphics object as returned by `graphics_init()`
+ * @param color If not NULL, this is a RBG color used to clear the screen
  * @return 1 on success, 0 on failure
+ * @note Passing NULL as color will skip clearing the framebuffer.
  */
 int graphics_flush(graphics_t *g, const uint8_t *color);
 
 /**
- * @brief Draws verticies
- * @param g Internal graphics state as returned by `graphics_init()`
- * @param d Drawable object
+ * @brief Draws object
+ * @param g Internal graphics object as returned by `graphics_init()`
+ * @param d Drawable object to draw
  * @param x Horizontal coordinate
  * @param y Vertical coordinate
+ * @param scale Relative scale (0-1)
+ * @param rotation Rotation angle in radians
  */
-void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y);
+void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y, float scale, float rotation);
 
 /**
  * @brief Creates drawable label
- * @param g Internal graphics state as returned by `graphics_init()`
- * @param atlas Character atlas
+ * @param g Internal graphics object as returned by `graphics_init()`
+ * @param atlas Atlas object as returned by `graphics_atlas_create()`
+ * @param anchor Anchor used for drawing
  * @return Drawable object
+ * @note Label internally holds pointer to the given atlas
  */
-drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas);
+drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas, enum anchor_types anchor);
 
 /**
  * @brief Creates drawable image
  * @param g Internal graphics state as returned by `graphics_init()`
- * @param width Texture width
- * @param height Texture height
+ * @param width Texture width in pixels
+ * @param height Texture height in pixels
+ * @param anchor Anchor used for drawing
  * @return Drawable object
  */
-drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height);
+drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, enum anchor_types anchor);
 
 /**
  * @brief Updates label text
- * @param label Label drawable to update
- * @param anchor Anchor used for geometry generation
- * @param label Label drawable to update
- * @param text NULL terminated string to use
+ * @param label Label object to update
+ * @param text NULL terminated string
  */
-void graphics_label_set_text(drawable_t *label, enum text_anchor anchor, const char *text);
+void graphics_label_set_text(drawable_t *label, const char *text);
 
 /**
  * @brief Updates label color
- * @param label Label drawable to update
+ * @param label Label object to update
  * @param color Font color in RGBA format
  */
-void graphics_label_set_color(drawable_t *label, uint8_t color[4]);
+void graphics_label_set_color(drawable_t *label, const uint8_t color[4]);
 
 /**
  * @brief Updates image bitmap
- * @param image Image drawable to update
+ * @param image Image object to update
  * @param buffer Pixel data buffer in RGBx format (width * height * 32)
  */
 void graphics_image_set_bitmap(drawable_t *image, const void *buffer);
@@ -170,8 +167,8 @@ void graphics_atlas_free(atlas_t *atlas);
 
 /**
  * @brief Releases graphics resources
- * @param g Internal graphics state as returned by `graphics_init()`
- * @note Does not release nested objects, use `graphics_atlas_free()` and `graphics_drawable_free()`
+ * @param g Internal graphics object as returned by `graphics_init()`
+ * @note Does not release nested objects, use `graphics_atlas_free()` and `graphics_drawable_free()`.
  */
 void graphics_free(graphics_t *g);
 

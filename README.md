@@ -2,6 +2,10 @@ Augmented reality navigation
 ============================
 
 This application uses data from GPS and inertial sensors to render a navigational overlay to captured video.
+Configuration can be loaded at runtime by
+~~~
+./arnav config.cfg
+~~~
 
 LICENSING
 ---------
@@ -11,7 +15,7 @@ DEPENDENCIES
 ------------
 Kernel
  * videodev2
- * i2c-dev
+ * iio
 
 Libraries
  * freetype2
@@ -22,16 +26,9 @@ Libraries
 HARDWARE
 --------
 Peripherals:
- * Video camera (V4L2)
-  - Either USB Video Class device or any other supported by kernel
-
- * Inertial sensors (I2C)
-  - InvenSense ITG-3200 gyroscope
-  - AKM AK8975 compass
-  - Bosh BMA-150 accelerometer
-
- * GPS sensor (TTY)
-  - Any NMEA 0183 compatible device with serial interface
+ * Video camera (supported by V4L2)
+ * Inertial sensors (supported by IIO)
+ * GPS sensor (NMEA 0183 compatible)
 
 COMPILATION
 -------------
@@ -61,8 +58,3 @@ Levels are
  * 2 - warning (default)
  * 3 - info
  * 4 - debug
-
-To generate documentation use
-~~~
-make doc
-~~~

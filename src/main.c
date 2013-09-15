@@ -18,147 +18,159 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <getopt.h>
+
+#ifdef X11BUILD
+#include <X11/Xlib.h>
+#endif /* X11BUILD */
 
 #include "debug.h"
-#include "test.h"
 #include "application.h"
-#include "imu-utils.h"
 
-/* Prints command line usage */
-static void usage()
+#define BUFFER_SIZE     128
+
+static unsigned long window_create(uint32_t width, uint32_t height)
 {
-    printf("Augmented reality navigation\n"
-           "usage: arnav [--help] [--test[=<test>]] [--video=<device>] [--gps=<device>] [--imu=<device>] [--wpts=<filename>] [--font=<fontname>] [--calib=<calibname>] [--update-calib]\n"
-           "   --help               Shows help\n"
-           "   --test <test>        Executes specified test (graphics, capture, gps, imu)\n"
-           "   --video <device>     Sets video device to use (\"/dev/video*\")\n"
-           "   --gps <device>       Sets GPS device to use (\"/dev/tty*\")\n"
-           "   --imu <device>       Sets IMU device to use (\"/dev/i2c-*\")\n"
-           "   --wpts <file>        Sets waypoint file to use\n"
-           "   --font <file>        Sets TrueType font file to use\n"
-           "   --calib <file>       Sets calibration file to use\n"
-           "   --update-calib       Re-calibrates device in interactive mode\n"
-           "\n");
+#ifdef X11BUILD
+
+    // Open display
+    Display *display = XOpenDisplay(NULL);
+    if(!display)
+    {
+        WARN("Failed to open X display");
+        return 0;
+    }
+
+    // Create window
+    unsigned long color = BlackPixel(display, 0);
+    Window root = RootWindow(display, 0);
+    Window window = XCreateSimpleWindow(display, root, 0, 0, width, height, 0, color, color);
+    XMapWindow(display, window);
+    XFlush(display);
+
+    INFO("Created window 0x%x", (uint32_t)window);
+    return window;
+
+#else /* X11BUILD */
+    return 0;
+#endif
 }
 
 int main(int argc, char *argv[])
 {
     DEBUG("main()");
 
-    struct config cfg =
+    int i;
+    for(i = 0; i < argc; i++) INFO("Argument %d = %s", i, argv[i]);
+
+    // Base configuration
+    static struct config cfg =
     {
-        .videodev = VIDEODEV,
-        .gpsdev = GPSDEV,
-        .imudev = IMUDEV,
-        .wptf = WPTF,
-        .fontname = FONTNAME,
-        .calibname = CALIBNAME
+        .video_device = "/dev/video0",
+        .video_width = 800,
+        .video_height = 600,
+        .video_format = "RGB4",
+        .video_interlace = 0,
+        .video_hfov = 1.0471, // 60 deg
+        .video_vfov = 1.0471,
+
+        .graphics_font_file = "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        .graphics_font_color_1 = { 0, 0, 0, 255 },
+        .graphics_font_color_2 = { 0, 0, 0, 255 },
+        .graphics_font_size_1 = 20,
+        .graphics_font_size_2 = 12,
+
+        .imu_device = "/dev/null",
+        .imu_gyro_scale = 1,
+        .imu_mag_weight = 0.2,
+        .imu_acc_weight = 0.2,
+
+        .gps_device = "/dev/null"
     };
 
-    static struct option options[] = {
-        { "help",           no_argument,       NULL, 0 },
-        { "test",           required_argument, NULL, 1 },
-        { "video",          required_argument, NULL, 2 },
-        { "gps",            required_argument, NULL, 3 },
-        { "imu",            required_argument, NULL, 4 },
-        { "wpts",           required_argument, NULL, 5 },
-        { "font",           required_argument, NULL, 6 },
-        { "calib",          required_argument, NULL, 7 },
-        { "update-calib",   no_argument,       NULL, 8 },
-        { 0, 0, 0, 0}
-    };
-
-    // Parse options
-    char *test = NULL;
-    int index, calib = 0;
-    while((index = getopt_long(argc, argv, "", options, NULL)) != -1)
+    if(argc == 2)
     {
-        switch(index)
+        // Read configuration
+        FILE *f = fopen(argv[1], "r");
+        if(!f)
         {
-            case 0:  usage(); return EXIT_SUCCESS;
-            case 1:  test = strdup(optarg); break;
-            case 2:  cfg.videodev = strdup(optarg); break;
-            case 3:  cfg.gpsdev = strdup(optarg); break;
-            case 4:  cfg.imudev = strdup(optarg); break;
-            case 5:  cfg.wptf = strdup(optarg); break;
-            case 6:  cfg.fontname = strdup(optarg); break;
-            case 7:  cfg.calibname = strdup(optarg); break;
-            case 8:  calib = 1; break;
-            default: usage(); return EXIT_FAILURE;
-        }
-    }
-
-    if(calib)
-    {
-        // Run calibration
-        struct imucalib calib;
-        if(!imu_calib_generate(&calib, cfg.imudev) || !imu_calib_save(&calib, cfg.calibname))
-        {
-            ERROR("Calibration failed");
-        }
-    }
-
-    if(test)
-    {
-        if(strcmp(test, "capture") == 0)
-        {
-            INFO("Testing capture, videodev='%s'", cfg.videodev);
-            if(!test_capture(cfg.videodev, VIDEO_WIDTH, VIDEO_HEIGHT, 100))
-            {
-                ERROR("Capture test failed");
-                return EXIT_FAILURE;
-            }
-        }
-        else if(strcmp(test, "gps") == 0)
-        {
-            INFO("Testing GPS, gpsdev='%s'", cfg.gpsdev);
-            if(!test_gps(cfg.gpsdev, 20))
-            {
-                ERROR("GPS test failed");
-                return EXIT_FAILURE;
-            }
-        }
-        else if(strcmp(test, "imu") == 0)
-        {
-            INFO("Testing IMU, imudev='%s'", cfg.imudev);
-            if(!test_imu(cfg.imudev, cfg.calibname, 20))
-            {
-                ERROR("IMU test failed");
-                return EXIT_FAILURE;
-            }
-        }
-        else if(strcmp(test, "graphics") == 0)
-        {
-            INFO("Testing graphics, fontname='%s'", cfg.fontname);
-            if(!test_graphics(cfg.fontname, VIDEO_WIDTH, VIDEO_HEIGHT, 100))
-            {
-                ERROR("Graphics test failed");
-                return EXIT_FAILURE;
-            }
+            WARN("Failed to open `%s`", argv[1]);
         }
         else
         {
-            ERROR("Unknown test name `%s`", test);
-            return EXIT_FAILURE;
+            char buf[BUFFER_SIZE];
+            while(fgets(buf, BUFFER_SIZE, f))
+            {
+                char *str = buf;
+
+                // Skip empty lines and '#' comments
+                while(*str == ' ') str++;
+                if((*str == '\n') || (*str == '#')) continue;
+                str[strlen(str) - 1] = 0;
+                INFO("Parsing config line `%s`", str);
+
+                // Parse line
+                char *interlace = NULL;
+                if(sscanf(str, "app_landmarks_file = %ms", &cfg.app_landmarks_file) != 1)
+                if(sscanf(str, "video_device = %ms", &cfg.video_device) != 1)
+                if(sscanf(str, "video_width = %u", &cfg.video_width) != 1)
+                if(sscanf(str, "video_height = %u", &cfg.video_height) != 1)
+                if(sscanf(str, "video_format = %4c", cfg.video_format) != 1)
+                if(sscanf(str, "video_interlace = %ms", &interlace) != 1)
+                if(sscanf(str, "video_hfov = %f", &cfg.video_hfov) != 1)
+                if(sscanf(str, "video_vfov = %f", &cfg.video_vfov) != 1)
+                if(sscanf(str, "graphics_font_file = %ms", &cfg.graphics_font_file) != 1)
+                if(sscanf(str, "graphics_font_color_1 = %x", (uint32_t*)cfg.graphics_font_color_1) != 1)
+                if(sscanf(str, "graphics_font_color_2 = %x", (uint32_t*)cfg.graphics_font_color_2) != 1)
+                if(sscanf(str, "graphics_font_size_1 = %hhu", &cfg.graphics_font_size_1) != 1)
+                if(sscanf(str, "graphics_font_size_2 = %hhu", &cfg.graphics_font_size_2) != 1)
+                if(sscanf(str, "imu_device = %ms", &cfg.imu_device) != 1)
+                if(sscanf(str, "imu_gyro_scale = %f", &cfg.imu_gyro_scale) != 1)
+                if(sscanf(str, "imu_gyro_offset_x = %f", &cfg.imu_gyro_offset[0]) != 1)
+                if(sscanf(str, "imu_gyro_offset_y = %f", &cfg.imu_gyro_offset[1]) != 1)
+                if(sscanf(str, "imu_gyro_offset_z = %f", &cfg.imu_gyro_offset[2]) != 1)
+                if(sscanf(str, "imu_mag_declination = %f", &cfg.imu_mag_declination) != 1)
+                if(sscanf(str, "imu_mag_inclination = %f", &cfg.imu_mag_inclination) != 1)
+                if(sscanf(str, "imu_mag_weight = %f", &cfg.imu_mag_weight) != 1)
+                if(sscanf(str, "imu_acc_weight = %f", &cfg.imu_acc_weight) != 1)
+                if(sscanf(str, "gps_device = %ms", &cfg.gps_device) != 1)
+                {
+                    WARN("Unknown parameter or parse error");
+                    continue;
+                }
+
+                if(interlace)
+                {
+                    if(!strcmp(interlace, "true"))
+                    {
+                        cfg.video_interlace = 1;
+                    }
+                    else if(!strcmp(interlace, "false"))
+                    {
+                        cfg.video_interlace = 0;
+                    }
+                    else
+                    {
+                        WARN("Parse error");
+                    }
+                    free(interlace);
+                }
+            }
         }
+    }
+
+    // Create window
+    cfg.app_window_id = window_create(cfg.video_width, cfg.video_height);
+
+    // Start application
+    application_t *app = application_init(&cfg);
+    if(app)
+    {
+        application_mainloop(app);
+        application_free(app);
         return EXIT_SUCCESS;
     }
     else
     {
-        INFO("Initializing videodev='%s', gpsdev='%s', imudev='%s', wptf='%s', fontname='%s', calibname='%s'",
-             cfg.videodev, cfg.gpsdev, cfg.imudev, cfg.wptf, cfg.fontname, cfg.calibname);
-
-        // Start application
-        application_t *app = application_init(&cfg);
-        if(app)
-        {
-            application_mainloop(app);
-            application_free(app);
-            return EXIT_SUCCESS;
-        }
-        else ERROR("Initialization failed");
+        return EXIT_FAILURE;
     }
-
-    return EXIT_FAILURE;
 }

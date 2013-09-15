@@ -17,29 +17,27 @@
  *
  * @section DESCRIPTION
  * This is an inertial measurement unit providing attitude data.
- * Measurements are done on separate thread
+ * Measurements are done on separate thread.
  * @note All functions do not block
  *
  * Example:
  * @code
  * int main()
  * {
- *     struct imucalib calib;
- *     imu_load_calib(&calib, "calibration.cfg");
- *     imu_t *imu = imu_open("/dev/i2c-0", &calib);
+ *     float vec3[] = { 0, 0, 0 };
+ *     imu_t *imu = imu_init("/dev/iio:device0", vec3, vec3, 0, 0, 0.2, 0.2);
  *
  *     while(1)
  *     {
- *         struct attdinfo attd;
- *         if(imu_read(imu, &attd))
- *         {
- *             // TODO: Do some processing here
- *         }
+ *         float roll, pitch, yaw;
+ *         imu_get_attitude(imu, &roll, &pitch, &yaw);
+ *
+ *         // TODO: Do some processing here
  *
  *         sleep(1);
  *     }
  *
- *     imu_close(imu);
+ *     imu_free(imu);
  * }
  * @endcode
  */
@@ -47,54 +45,38 @@
 #ifndef IMU_H
 #define IMU_H
 
-#include "imu-utils.h"
-
 /**
- * @brief IMU state variable
+ * @brief Internal object
  */
 typedef struct _imu imu_t;
 
 /**
- * @brief Attitude information
+ * @brief Initializes IMU device
+ * @param device IIO device name eg. "/dev/iio:device0"
+ * @param gyro_scale Gyroscope scale coefficient
+ * @param gyro_offset Gyroscope offset in radians per second
+ * @param mag_declination Magnetic declination
+ * @param mag_inclination Magnetic inclination
+ * @param mag_weight Compass measurement weight
+ * @param acc_weight Accelerometer measurement weight
+ * @returns Internal object or NULL on error
  */
-struct imudata
-{
-    /**
-     * @brief Roll angle in radians
-     */
-    double roll;
-
-    /**
-     * @brief Pitch angle in radians
-     */
-    double pitch;
-
-    /**
-     * @brief Yaw angle in radians
-     */
-    double yaw;
-};
+imu_t *imu_init(const char *device, float gyro_scale, float gyro_offset[3], float mag_declination, float mag_inclination, float mag_weight, float acc_weight);
 
 /**
- * @brief Opens I2C bus and initializes the devices
- * @param devname Name of the I2C bus eg. "/dev/i2c-0"
- * @param calib Calibration data
- * @returns Internal state variable or NULL on error
- */
-imu_t *imu_open(const char *devname, const struct imucalib *calib);
-
-/**
- * @brief Reads data from devices
- * @param imu State variable as returned by `imu_open()`
- * @param[out] data Pointer to structure where to output results
+ * @brief Gets attitude information
+ * @param imu Object as returned by `imu_init()`
+ * @param[out] roll Roll angle in radians
+ * @param[out] pitch Pitch angle in radians
+ * @param[out] yaw Yaw angle in radians
  * @return 1 on success, 0 otherwise
  */
-int imu_read(imu_t *imu, struct imudata *data);
+void imu_get_attitude(imu_t *imu, float *roll, float *pitch, float *yaw);
 
 /**
- * @brief Closes the device
- * @param imu State variable as returned by `imu_open()`
+ * @brief Releases resources
+ * @param imu Object as returned by `imu_init()`
  */
-void imu_close(imu_t *imu);
+void imu_free(imu_t *imu);
 
 #endif /* IMU_H */

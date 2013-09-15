@@ -17,38 +17,79 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <string.h>
 #include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <termios.h>
 #include <math.h>
+#include <pthread.h>
 
 #include "debug.h"
 #include "gps.h"
 
-#ifndef M_PI
-#define M_PI    3.14159265358979323846
-#endif
-
 /* Nautical mile to kilometer conversion */
-#define NM2KM   1.852
+#define NM2KM           1.852
 
 /* I/O Buffer size */
-#define BUFSZ    256
+#define BUFFER_SIZE     256
 
-int gps_open(const char *devname)
+struct _gps
 {
-    DEBUG("gps_open()");
     int fd;
+    pthread_t thread;
+    pthread_mutex_t mutex;
 
-    assert(devname != NULL);
+    uint16_t hr, min, lat_deg, lon_deg, sat_num;
+    float sec, lat_min, lon_min, alt, spd, trk, brg, dst, xte;
+    char lat_dir, lon_dir, xte_dir, orig[32], dest[32];
+};
+
+static void *worker(void *arg)
+{
+    INFO("Thread started");
+    gps_t *gps = (gps_t*)arg;
+
+    char buf[BUFFER_SIZE];
+    ssize_t len;
+    while((len = read(gps->fd, buf, BUFFER_SIZE)) != -1)
+    {
+        if(len == 0) break;
+        buf[len - 1] = 0;
+        INFO("Received sentence `%s`", buf);
+
+        pthread_mutex_lock(&gps->mutex);
+        if(sscanf(buf, "$GPGGA,%2hu%2hu%f,%2hu%f,%c,%3hu%f,%c,1,%hu,%*f,%f,M,%*s",
+                  &gps->hr, &gps->min, &gps->sec, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->sat_num, &gps->alt) != 11)
+        if(sscanf(buf, "$GPRMB,A,%f,%c,%32[^,],%32[^,],%2hu%f,%c,%3hu%f,%c,%f,%f,%f,%*s",
+                  &gps->xte, &gps->xte_dir, gps->orig, gps->dest, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->dst, &gps->brg, &gps->spd) != 13)
+        if(sscanf(buf, "$GPRMC,%2hu%2hu%f,A,%2hu%f,%c,%3hu%f,%c,%f,%f,%*s",
+                  &gps->hr, &gps->min, &gps->sec, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->spd, &gps->trk) != 11)
+        {
+            WARN("Unknown sentence or parse error");
+        }
+        pthread_mutex_unlock(&gps->mutex);
+    }
+
+    ERROR("Broken pipe");
+    return NULL;
+}
+
+gps_t *gps_init(const char *device)
+{
+    DEBUG("gps_init()");
+    assert(device != 0);
+
+    gps_t *gps = calloc(1, sizeof(struct _gps));
+    assert(gps != 0);
 
     // Open device
-    if((fd = open(devname, O_RDONLY | O_NOCTTY | O_NONBLOCK)) == -1)
+    if((gps->fd = open(device, O_RDONLY | O_NOCTTY)) == -1)
     {
-        WARN("Failed to open '%s'", devname);
-        return fd;
+        WARN("Failed to open '%s'", device);
+        free(gps);
+        return NULL;
     }
 
     struct termios tty;
@@ -58,100 +99,77 @@ int gps_open(const char *devname)
     tty.c_cflag = CS8 | CREAD | CLOCAL;
     tty.c_lflag = ICANON;
 
-    if(cfsetospeed(&tty, B9600) != 0)
-    {
-        WARN("Failed to set output baud rate");
-        close(fd);
-        return -1;
-    }
-    if(cfsetispeed(&tty, B9600) != 0)
-    {
-        WARN("Failed to set input baud rate");
-        close(fd);
-        return -1;
-    }
-
     // Set attributes
-    if(tcsetattr(fd, TCSANOW, &tty) != 0)
+    if(cfsetospeed(&tty, B9600) || cfsetispeed(&tty, B9600) || tcsetattr(gps->fd, TCSANOW, &tty))
     {
         WARN("Failed to set attributes");
-        close(fd);
-        return -1;
     }
 
-    return fd;
+    // Start worker thread
+    if(pthread_mutex_init(&gps->mutex, NULL) || pthread_create(&gps->thread, NULL, worker, gps))
+    {
+        WARN("Failed to create thread");
+        close(gps->fd);
+        free(gps);
+        return NULL;
+    }
+
+    return gps;
 }
 
-int gps_read(int fd, struct gpsdata *data)
+void gps_get_time(gps_t *gps, double *time)
 {
-    DEBUG("gps_read()");
-    assert(fd >= 0);
-    assert(data != NULL);
+    DEBUG("gps_get_time()");
+    assert(gps != 0);
 
-    // Read NMEA sentence
-    char buf[BUFSZ];
-    ssize_t len = read(fd, buf, BUFSZ);
-    buf[len - 1] = 0;
-    INFO("Received sentence `%s`", buf);
-
-    float hr, min, sec, lat_deg, lat_min, lon_deg, lon_min, alt, spd, trk, dst, xte;
-    char lat_dir, lon_dir, *orig = NULL, *dest = NULL, xte_dir;
-
-    // Parse GGA sentence
-    if(sscanf(buf, "$GPGGA,%2f%2f%f,%2f%f,%c,%3f%f,%c,1,%*d,%*f,%f,M,%*s",
-              &hr, &min, &sec, &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &alt) == 10)
-    {
-        data->time = hr * 3600.0 + min * 60.0 + sec;
-        data->lat = (lat_dir == 'E' ? 1 : -1) * (lat_deg + (lat_min / 60.0)) / 180 * M_PI;
-        data->lon = (lon_dir == 'E' ? 1 : -1) * (lon_deg + (lon_min / 60.0)) / 180 * M_PI;
-        data->alt = alt;
-        INFO("Parsed GGA sentence time = %lf, lat = %lf, lon = %lf, alt = %lf",
-             data->time, data->lat, data->lon, data->alt);
-        return 1;
-    }
-
-    // Parse RMB sentence
-    if(sscanf(buf, "$GPRMB,A,%f,%c,%m[^,],%m[^,],%2f%f,%c,%3f%f,%c,%f,%f,%f,%*s",
-              &xte, &xte_dir, &orig, &dest, &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &dst, &trk, &spd) == 13)
-    {
-        strncpy(data->orig_name, orig, sizeof(data->orig_name));
-        strncpy(data->dest_name, dest, sizeof(data->dest_name));
-        free(orig);
-        free(dest);
-
-        data->xte = (xte_dir == 'R' ? 1 : -1 ) * xte * NM2KM;
-        data->dest_lat = (lat_dir == 'E' ? 1 : -1) * (lat_deg + (lat_min / 60.0)) / 180 * M_PI;
-        data->dest_lon = (lon_dir == 'E' ? 1 : -1) * (lon_deg + (lon_min / 60.0)) / 180 * M_PI;
-        data->dest_range = dst * NM2KM;
-        data->dest_bearing = trk;
-        data->dest_velocity = spd * NM2KM;
-        INFO("Parsed RMB sentence xte = %lf, orig = %s, dest = %s, lat = %lf, lon = %lf, range = %lf, bearing = %lf, velocity = %lf",
-             data->xte, data->orig_name, data->dest_name, data->dest_lat, data->dest_lon, data->dest_range, data->dest_bearing, data->dest_velocity);
-        return 1;
-    }
-    if(orig) free(orig);
-    if(dest) free(dest);
-
-    // Parse RMC sentence
-    if(sscanf(buf, "$GPRMC,%2f%2f%f,A,%2f%f,%c,%3f%f,%c,%f,%f,%*s",
-              &hr, &min, &sec, &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &spd, &trk) == 11)
-    {
-        data->time = hr * 3600.0 + min * 60.0 + sec;
-        data->lat = (lat_dir == 'E' ? 1 : -1) * (lat_deg + (lat_min / 60.0)) / 180 * M_PI;
-        data->lon = (lon_dir == 'E' ? 1 : -1) * (lon_deg + (lon_min / 60.0)) / 180 * M_PI;
-        data->spd = spd * NM2KM;
-        data->trk = trk;
-        INFO("Parsed RMC sentence time = %lf, lat = %lf, lon = %lf, speed = %lf, track = %lf",
-             data->time, data->lat, data->lon, data->spd, data->trk);
-        return 1;
-    }
-
-    return 0;
+    pthread_mutex_lock(&gps->mutex);
+    if(time) *time = (float)gps->hr * 3600.0 + (float)gps->min * 60.0 + gps->sec;
+    pthread_mutex_unlock(&gps->mutex);
 }
 
-void gps_close(int fd)
+void gps_get_pos(gps_t *gps, double *lat, double *lon, float *alt)
 {
-    DEBUG("gps_close()");
+    DEBUG("gps_get_pos()");
+    assert(gps != 0);
 
-    close(fd);
+    pthread_mutex_lock(&gps->mutex);
+    if(lat) *lat = (gps->lat_dir == 'N' ? 1 : -1) * ((float)gps->lat_deg + (gps->lat_min / 60.0)) / 180 * M_PI;
+    if(lon) *lon = (gps->lon_dir == 'E' ? 1 : -1) * ((float)gps->lon_deg + (gps->lon_min / 60.0)) / 180 * M_PI;
+    if(alt) *alt = gps->alt;
+    pthread_mutex_unlock(&gps->mutex);
+}
+
+void gps_get_track(gps_t *gps, float *speed, float *track)
+{
+    DEBUG("gps_get_track()");
+    assert(gps != 0);
+
+    pthread_mutex_lock(&gps->mutex);
+    if(speed) *speed = gps->spd * NM2KM;
+    if(track) *track = gps->trk;
+    pthread_mutex_unlock(&gps->mutex);
+}
+
+void gps_get_route(gps_t *gps, char *waypoint, float *range, float *bearing)
+{
+    DEBUG("gps_get_route()");
+    assert(gps != 0);
+
+    pthread_mutex_lock(&gps->mutex);
+    if(waypoint) strcpy(waypoint, gps->dest);
+    if(range) *range = gps->dst * NM2KM;
+    if(bearing) *bearing = gps->brg;
+    pthread_mutex_unlock(&gps->mutex);
+}
+
+void gps_free(gps_t *gps)
+{
+    DEBUG("gps_free()");
+    assert(gps != 0);
+
+    pthread_cancel(gps->thread);
+    pthread_join(gps->thread, NULL);
+    pthread_mutex_destroy(&gps->mutex);
+    close(gps->fd);
+    free(gps);
 }

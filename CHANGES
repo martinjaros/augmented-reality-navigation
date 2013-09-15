@@ -1,11 +1,13 @@
- * simplified window creation
- * cleaned graphics API
- * font atlas utilities simplified and moved to graphics-utils
- * added static library output to build sequence
- * anchor option for labels
- * fixed video capture, more capture testing
- * added software pipe for IMU input
- * improved DCM algorithm, external calibration
+0.4
+ * more robust overall APIs
+ * external configuration
+ * GPS processing on separate thread
+ * graphics divided to core, common and text
+ * `capture` renamed to `video`, `waypoints` renamed to `landmarks`
+ * nav module merged to application
+ * inline shaders
+ * changed IMU driver to IIO
+ * detailed traces
 
 0.3
  * font file removed, using system font

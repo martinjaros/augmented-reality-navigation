@@ -1,6 +1,6 @@
 /**
  * @file
- * @brief       Debugging macros
+ * @brief       Debugging utilities
  * @author      Martin Jaros <xjaros32@stud.feec.vutbr.cz>
  *
  * @section LICENSE
@@ -17,7 +17,7 @@
  *
  * @section DESCRIPTION
  * These are macros used for code debugging and tracing,
- * they print messages to standard error according to TRACE_LEVEL setting.
+ * they print messages according to TRACE_LEVEL setting.
  * - TRACE_LEVEL 0 - (disabled)
  * - TRACE_LEVEL 1 - ERROR
  * - TRACE_LEVEL 2 - WARN
@@ -28,28 +28,30 @@
 #ifndef DEBUG_H
 #define DEBUG_H
 
-#include <stdio.h>
+//! @cond
+void _debug_printf(int level, const char *file, int line, const char *msg, ...);
+//! @endcond
 
 #if TRACE_LEVEL > 0
-#define ERROR(msg, ...) fprintf(stderr, "(%s:%d) ERROR - "msg"\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define ERROR(msg, ...) _debug_printf(1, __FILE__, __LINE__, msg, ##__VA_ARGS__)
 #else
 #define ERROR(msg, ...)
 #endif
 
 #if TRACE_LEVEL > 1
-#define WARN(msg, ...) fprintf(stderr, "(%s:%d) WARN - "msg"\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define WARN(msg, ...) _debug_printf(2, __FILE__, __LINE__, msg, ##__VA_ARGS__)
 #else
 #define WARN(msg, ...)
 #endif
 
 #if TRACE_LEVEL > 2
-#define INFO(msg, ...) fprintf(stderr, "(%s:%d) INFO - "msg"\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define INFO(msg, ...) _debug_printf(3, __FILE__, __LINE__, msg, ##__VA_ARGS__)
 #else
 #define INFO(msg, ...)
 #endif
 
 #if TRACE_LEVEL > 3
-#define DEBUG(msg, ...) fprintf(stderr, "(%s:%d) DEBUG - "msg"\n", __FILE__, __LINE__, ##__VA_ARGS__)
+#define DEBUG(msg, ...) _debug_printf(4, __FILE__, __LINE__, msg, ##__VA_ARGS__)
 #else
 #define DEBUG(msg, ...)
 #endif

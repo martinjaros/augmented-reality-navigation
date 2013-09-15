@@ -22,42 +22,136 @@
 #ifndef APPLICATION_H
 #define APPLICATION_H
 
-#include "config.h"
+#include <stdint.h>
 
 /**
  * @brief Application configuration structure
  */
 struct config
 {
-    /**
-     * @brief Video device name
-     */
-    char *videodev;
+    /************* APPLICATION *************/
 
     /**
-     * @brief GPS device name
+     * @brief Landmark database file name
      */
-    char *gpsdev;
+    char *app_landmarks_file;
 
     /**
-     * @brief IMU device name
+     * @brief Native window id
      */
-    char *imudev;
+    unsigned long app_window_id;
+
+
+    /************* VIDEO *************/
 
     /**
-     * @brief Waypoint database file name
+     * @brief Device file name
      */
-    char *wptf;
+    char *video_device;
+
+    /**
+     * @brief Frame width in pixels
+     */
+    uint32_t video_width;
+
+    /**
+     * @brief Frame height in pixels
+     */
+    uint32_t video_height;
+
+    /**
+     * @brief Pixel format in fourcc notation
+     */
+    char video_format[4];
+
+    /**
+     * @brief Interlacing
+     */
+    uint8_t video_interlace;
+
+    /**
+     * @brief Horizontal field of view in radians
+     */
+    float video_hfov;
+
+    /**
+     * @brief Vertical field of view in radians
+     */
+    float video_vfov;
+
+
+    /************* GRAPHICS *************/
 
     /**
      * @brief Font file name
      */
-    char *fontname;
+    char *graphics_font_file;
 
     /**
-     * @brief Calibration file name
+     * @brief Font color for level 1 (RGBA)
      */
-    char *calibname;
+    uint8_t graphics_font_color_1[4];
+
+    /**
+     * @brief Font color for level 2 (RGBA)
+     */
+    uint8_t graphics_font_color_2[4];
+
+    /**
+     * @brief Font size for level 1
+     */
+    uint8_t graphics_font_size_1;
+
+    /**
+     * @brief Font size for level 2
+     */
+    uint8_t graphics_font_size_2;
+
+
+    /************* IMU *************/
+
+    /**
+     * @brief Device file name
+     */
+    char *imu_device;
+
+    /**
+     * @brief Gyroscope scale coefficient
+     */
+    float imu_gyro_scale;
+
+    /**
+     * @brief Gyroscope zero offset per axis (radian per second)
+     */
+    float imu_gyro_offset[3];
+
+    /**
+     * @brief Compass declination (radian)
+     */
+    float imu_mag_declination;
+
+    /**
+     * @brief Compass inclination (radian)
+     */
+    float imu_mag_inclination;
+
+    /**
+     * @brief Relative weight of the compass measurements
+     */
+    float imu_mag_weight;
+
+    /**
+     * @brief Relative weight of the accelerometer measurements
+     */
+    float imu_acc_weight;
+
+
+    /************* GPS *************/
+
+    /**
+     * @brief Device file name
+     */
+    char *gps_device;
 };
 
 /**

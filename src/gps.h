@@ -17,32 +17,27 @@
  *
  * @section DESCRIPTION
  * This is a utility library for GPS devices using NMEA 0183 protocol.
- * It works over serial tty line opened by `gps_open`, which returns a file descriptor
- * to be used for `select()` or `poll()`. Positional data could be then retrieved by `gps_read()`.
+ * It works over serial tty line initializes by `gps_init()`, processing is done in separate thread.
  * @note All functions do not block
  *
  * Example:
  * @code
  * int main()
  * {
- *     int fd = gps_open("/dev/ttyS0");
+ *     gps_t *gps = gps_init("/dev/ttyS0");
  *
  *     while(1)
  *     {
- *         fd_set fds;
- *         FD_ZERO(&fds);
- *         FD_SET(fd, &fds);
+ *         double lat, lon;
+ *         float alt;
+ *         gps_get_pos(gps, &lat, &lon, &alt);
  *
- *         select(fd + 1, &fds, NULL, NULL, NULL);
+ *         // TODO: Do some processing here
  *
- *         struct posinfo pos;
- *         if(gps_read(fd, &pos))
- *         {
- *             // TODO: Do some processing here
- *         }
+ *         sleep(1);
  *     }
  *
- *     gps_close(fd);
+ *     gps_free(gps);
  * }
  * @endcode
  */
@@ -51,100 +46,54 @@
 #define GPS_H
 
 /**
- * @brief Position, track and destination information
+ * @brief Internal object
  */
-struct gpsdata
-{
-    /**
-     * @brief Time in seconds
-     */
-    double time;
-
-    /**
-     * @brief Latitude in radians
-     */
-    double lat;
-
-    /**
-     * @brief Longitude in radians
-     */
-    double lon;
-
-    /**
-     * @brief Altitude in meters
-     */
-    double alt;
-
-    /**
-     * @brief Speed in kilometers per hour
-     */
-    double spd;
-
-    /**
-     * @brief Track angle in degrees
-     */
-    double trk;
-
-    /**
-     * @brief Cross track error in kilometers (right positive, left negative)
-     */
-    double xte;
-
-    /**
-     * @brief Origin waypoint name
-     */
-    char orig_name[32];
-
-    /**
-     * @brief Destination waypoint name
-     */
-    char dest_name[32];
-
-    /**
-     * @brief Destination waypoint latitude in radians
-     */
-    double dest_lat;
-
-    /**
-     * @brief Destination waypoint longitude in radians
-     */
-    double dest_lon;
-
-    /**
-     * @brief Destination waypoint range in kilometers
-     */
-    double dest_range;
-
-    /**
-     * @brief Destination waypoint bearing in degrees
-     */
-    double dest_bearing;
-
-    /**
-     * @brief Destination waypoint closing velocity in kilometers per hour
-     */
-    double dest_velocity;
-};
+typedef struct _gps gps_t;
 
 /**
- * @brief Opens GPS device and initializes tty line
- * @param devname Serial device name eg. "/dev/ttyS0"
- * @return File descriptor or -1 on error
+ * @brief Initializes GPS device
+ * @param device Serial device name eg. "/dev/ttyS0"
+ * @return GPS object or NULL on error
  */
-int gps_open(const char *devname);
+gps_t *gps_init(const char *device);
 
 /**
- * @brief Reads and parses NMEA 0183 sentence
- * @param fd File descriptor as returned by `gps_open()`
- * @param[out] data Pointer to structure where to output results
- * @return 1 if the structure was modified, 0 otherwise
+ * @brief Gets time information
+ * @param gps Object returned by `gps_init()`
+ * @param[out] time Time of day in seconds
  */
-int gps_read(int fd, struct gpsdata *data);
+void gps_get_time(gps_t *gps, double *time);
 
 /**
- * @brief Closes the device
- * @param fd File descriptor as returned by `gps_open()`
+ * @brief Gets position information
+ * @param gps Object returned by `gps_init()`
+ * @param[out] lat Latitude in radians
+ * @param[out] lon Longitude in radians
+ * @param[out] alt Altitude in meters
  */
-void gps_close(int fd);
+void gps_get_pos(gps_t *gps, double *lat, double *lon, float *alt);
+
+/**
+ * @brief Gets track information
+ * @param gps Object returned by `gps_init()`
+ * @param[out] speed Speed in km/h
+ * @param[out] track Track angle in degrees
+ */
+void gps_get_track(gps_t *gps, float *speed, float *track);
+
+/**
+ * @brief Gets route information
+ * @param gps Object returned by `gps_init()`
+ * @param[out] waypoint Name of the waypoint (32 characters max)
+ * @param[out] range Waypoint range in km
+ * @param[out] bearing Bearing to waypoint in degrees
+ */
+void gps_get_route(gps_t *gps, char *waypoint, float *range, float *bearing);
+
+/**
+ * @brief Releases resources
+ * @param gps Object returned by `gps_init()`
+ */
+void gps_free(gps_t *gps);
 
 #endif /* GPS_H */

@@ -49,6 +49,8 @@ struct _drawable
     // Vertex buffer, its length and texture
     GLuint vbo, num, tex;
 
+    GLenum mode;
+
     // Colors
     GLfloat mask[4], color[4];
 };

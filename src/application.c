@@ -49,8 +49,7 @@ struct _application
     graphics_t *graphics;
     atlas_t *atlas1, *atlas2;
     drawable_t *image;
-    drawable_t *label_alt, *label_spd, *label_trk;
-    drawable_t *label_waypoint, *label_range, *label_bearing;
+    hud_t *hud;
     struct landmark_node *landmark;
 
     uint32_t video_width, video_height;
@@ -80,6 +79,20 @@ application_t *application_init(struct config *cfg)
         goto error;
     }
 
+    // Create image
+    if(!(app->image = graphics_image_create(app->graphics, cfg->video_width, cfg->video_height, ANCHOR_LEFT_TOP)))
+    {
+        ERROR("Cannot create image");
+        goto error;
+    }
+
+    // Create HUD
+    if(!(app->hud = graphics_hud_create(app->graphics, app->atlas1, cfg->graphics_font_color_1, cfg->graphics_font_size_1, cfg->video_vfov)))
+    {
+        ERROR("Cannot create HUD");
+        goto error;
+    }
+
     // Initialize GPS
     if(!(app->gps = gps_init(cfg->gps_device)))
     {
@@ -106,28 +119,6 @@ application_t *application_init(struct config *cfg)
         ERROR("Cannot open video device");
         goto error;
     }
-
-    // Create drawables
-    app->image = graphics_image_create(app->graphics, cfg->video_width, cfg->video_height, ANCHOR_LEFT_TOP);
-    app->label_alt = graphics_label_create(app->graphics, app->atlas1, ANCHOR_LEFT_TOP);
-    app->label_spd = graphics_label_create(app->graphics,app->atlas1, ANCHOR_LEFT_TOP);
-    app->label_trk = graphics_label_create(app->graphics,app->atlas1, ANCHOR_LEFT_TOP);
-    app->label_waypoint = graphics_label_create(app->graphics,app->atlas1, ANCHOR_RIGHT_TOP);
-    app->label_range = graphics_label_create(app->graphics,app->atlas1, ANCHOR_RIGHT_TOP);
-    app->label_bearing = graphics_label_create(app->graphics,app->atlas1, ANCHOR_RIGHT_TOP);
-    if(!app->image || !app->label_alt || !app->label_spd || !app->label_trk ||
-       !app->label_waypoint || !app->label_range || !app->label_bearing)
-    {
-        ERROR("Cannot create widgets");
-        goto error;
-    }
-
-    graphics_label_set_color(app->label_alt, cfg->graphics_font_color_1);
-    graphics_label_set_color(app->label_spd, cfg->graphics_font_color_1);
-    graphics_label_set_color(app->label_trk, cfg->graphics_font_color_1);
-    graphics_label_set_color(app->label_waypoint, cfg->graphics_font_color_1);
-    graphics_label_set_color(app->label_range, cfg->graphics_font_color_1);
-    graphics_label_set_color(app->label_bearing, cfg->graphics_font_color_1);
 
     // Read landmarks
     if(cfg->app_landmarks_file)
@@ -192,12 +183,7 @@ error:
     if(app->gps) gps_free(app->gps);
     if(app->imu) imu_free(app->imu);
     if(app->image) graphics_drawable_free(app->image);
-    if(app->label_alt) graphics_drawable_free(app->label_alt);
-    if(app->label_spd) graphics_drawable_free(app->label_spd);
-    if(app->label_trk) graphics_drawable_free(app->label_trk);
-    if(app->label_waypoint) graphics_drawable_free(app->label_waypoint);
-    if(app->label_bearing) graphics_drawable_free(app->label_bearing);
-    if(app->label_range) graphics_drawable_free(app->label_range);
+    if(app->hud) graphics_hud_free(app->hud);
     if(app->atlas1) graphics_atlas_free(app->atlas1);
     if(app->atlas2) graphics_atlas_free(app->atlas2);
     if(app->graphics) graphics_free(app->graphics);
@@ -220,8 +206,8 @@ void application_mainloop(application_t *app)
     void *data;
     size_t length;
     double lat, lon;
-    float roll, pitch, yaw, alt, speed, track, bearing, range;
-    char waypoint[32], str[128];
+    float att[3], alt, spd, trk, brg, dst;
+    char wpt[32];
 
     while(1)
     {
@@ -236,7 +222,7 @@ void application_mainloop(application_t *app)
         graphics_draw(app->graphics, app->image, 0, 0, 1, 0);
 
         // Draw landmarks
-        imu_get_attitude(app->imu, &roll, &pitch, &yaw);
+        imu_get_attitude(app->imu, &att[0], &att[1], &att[2]);
         gps_get_pos(app->gps, &lat, &lon, &alt);
         struct landmark_node *node;
         for(node = app->landmark; node; node = node->next)
@@ -245,10 +231,10 @@ void application_mainloop(application_t *app)
             double dlon = cos(lat) * (node->lon - lon);
             float dalt = node->alt - alt;
             float dist = sqrt(dlat*dlat + dlon*dlon) * EARTH_RADIUS;
-            float hangle_tmp = atan2(dlon, dlat) - yaw;
-            float vangle_tmp = atan(dalt / dist) - pitch;
-            float cosz = cos(roll);
-            float sinz = sin(roll);
+            float hangle_tmp = atan2(dlon, dlat) - att[2];
+            float vangle_tmp = atan(dalt / dist) - att[1];
+            float cosz = cos(att[0]);
+            float sinz = sin(att[0]);
             float hangle = hangle_tmp * cosz - vangle_tmp * sinz;
             float vangle = hangle_tmp * sinz - vangle_tmp * cosz;
 
@@ -259,35 +245,10 @@ void application_mainloop(application_t *app)
             graphics_draw(app->graphics, node->label, x, y, 1, 0);
         }
 
-        // Draw track info
-        gps_get_track(app->gps, &speed, &track);
-
-        snprintf(str, sizeof(str), "Altitude %d m", (int)(alt + 0.5));
-        graphics_label_set_text(app->label_alt, str);
-        graphics_draw(app->graphics, app->label_alt, 10, 10, 1, 0);
-
-        snprintf(str, sizeof(str), "Speed %d km/h", (int)(speed + 0.5));
-        graphics_label_set_text(app->label_spd, str);
-        graphics_draw(app->graphics, app->label_spd, 10, 40, 1, 0);
-
-        snprintf(str, sizeof(str), "Track %d deg", (int)(track + 0.5));
-        graphics_label_set_text(app->label_trk, str);
-        graphics_draw(app->graphics, app->label_trk, 10, 70, 1, 0);
-
-        // Draw route info
-        gps_get_route(app->gps, waypoint, &range, &bearing);
-
-        snprintf(str, sizeof(str), "Destination `%s`", waypoint);
-        graphics_label_set_text(app->label_waypoint, str);
-        graphics_draw(app->graphics, app->label_waypoint, app->video_width - 10, 10, 1, 0);
-
-        snprintf(str, sizeof(str), "Bearing %d\xB0", (int)(bearing + 0.5));
-        graphics_label_set_text(app->label_bearing, str);
-        graphics_draw(app->graphics, app->label_bearing, app->video_width - 10, 40, 1, 0);
-
-        snprintf(str, sizeof(str), "Range %d km", (int)(range + 0.5));
-        graphics_label_set_text(app->label_range, str);
-        graphics_draw(app->graphics, app->label_range, app->video_width - 10, 70, 1, 0);
+        // Draw HUD overlay
+        gps_get_track(app->gps, &spd, &trk);
+        gps_get_route(app->gps, wpt, &dst, &brg);
+        graphics_hud_draw(app->hud, att, spd, alt, trk, brg, dst, wpt);
 
         // Render to screen
         if(!graphics_flush(app->graphics, NULL))
@@ -307,12 +268,7 @@ void application_free(application_t *app)
     gps_free(app->gps);
     imu_free(app->imu);
     graphics_drawable_free(app->image);
-    graphics_drawable_free(app->label_alt);
-    graphics_drawable_free(app->label_spd);
-    graphics_drawable_free(app->label_trk);
-    graphics_drawable_free(app->label_waypoint);
-    graphics_drawable_free(app->label_bearing);
-    graphics_drawable_free(app->label_range);
+    graphics_hud_free(app->hud);
     graphics_atlas_free(app->atlas1);
     graphics_atlas_free(app->atlas2);
     graphics_free(app->graphics);

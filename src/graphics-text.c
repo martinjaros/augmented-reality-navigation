@@ -171,6 +171,7 @@ drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas, enum anchor_typ
     label->d.color[2] = 0;
     label->d.color[3] = 0;
     label->d.num = 0;
+    label->d.mode = GL_TRIANGLES;
 
     glGenBuffers(1, &label->d.vbo);
     label->d.tex = atlas->texture;

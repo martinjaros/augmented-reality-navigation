@@ -56,7 +56,7 @@ void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y, float s
     glVertexAttribPointer(g->attr_coord, 4, GL_FLOAT, GL_FALSE, 0, 0);
 
     // Draw arrays
-    glDrawArrays(GL_TRIANGLES, 0, d->num);
+    glDrawArrays(d->mode, 0, d->num);
 }
 
 drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, enum anchor_types anchor)
@@ -77,6 +77,7 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
     image->d.color[2] = 0;
     image->d.color[3] = 1;
     image->d.num = 6;
+    image->d.mode = GL_TRIANGLES;
 
     float right = 2.0 / g->width * width;
     float bottom = 2.0 / g->height * height;

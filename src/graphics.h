@@ -64,6 +64,11 @@ typedef struct _drawable drawable_t;
 typedef struct _atlas atlas_t;
 
 /**
+ * @brief HUD composite object
+ */
+typedef struct _hud hud_t;
+
+/**
  * @brief Anchor options
  */
 enum anchor_types
@@ -124,13 +129,43 @@ drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas, enum anchor_typ
 
 /**
  * @brief Creates drawable image
- * @param g Internal graphics state as returned by `graphics_init()`
+ * @param g Internal graphics object as returned by `graphics_init()`
  * @param width Texture width in pixels
  * @param height Texture height in pixels
  * @param anchor Anchor used for drawing
  * @return Drawable object
  */
 drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, enum anchor_types anchor);
+
+/**
+ * @brief Creates HUD overlay
+ * @param g Internal graphics object as returned by `graphics_init()`
+ * @param atlas Atlas object as returned by `graphics_atlas_create()`
+ * @param color RGBA color
+ * @param font_size Size of font
+ * @param vfov Vertical field of view in radians
+ * @return HUD object
+ */
+hud_t *graphics_hud_create(graphics_t *g, atlas_t *atlas, uint8_t color[4], uint32_t font_size, float vfov);
+
+/**
+ * @brief Draws HUD overlay
+ * @param hud HUD object
+ * @param attitude Roll, bank and yaw angles in radians
+ * @param speed Speed in km/h
+ * @param altitude Altitude in meters
+ * @param track Track angle in degrees
+ * @param bearing Bearing to waypoint in degrees
+ * @param distance Distance to waypoint in kilometers
+ * @param waypoint Waypoint name shown centered on top
+ */
+void graphics_hud_draw(hud_t *hud, float attidude[3], float speed, float altitude, float track, float bearing, float distance, const char *waypoint);
+
+/**
+ * @brief Releases resources from HUD object
+ * @param hud HUD object
+ */
+void graphics_hud_free(hud_t *hud);
 
 /**
  * @brief Updates label text

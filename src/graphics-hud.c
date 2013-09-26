@@ -36,7 +36,7 @@
 #define COMPASS_LABEL_NUM       12
 
 /* Number of steps on compass tape */
-#define COMPASS_STEP_NUM        34
+#define COMPASS_STEP_NUM        36
 
 /* Compass tape height */
 #define COMPASS_HEIGHT          10

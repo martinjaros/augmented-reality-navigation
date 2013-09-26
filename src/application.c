@@ -87,7 +87,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Create HUD
-    if(!(app->hud = graphics_hud_create(app->graphics, app->atlas1, cfg->graphics_font_color_1, cfg->graphics_font_size_1, cfg->video_vfov)))
+    if(!(app->hud = graphics_hud_create(app->graphics, app->atlas1, cfg->graphics_font_color_1, cfg->graphics_font_size_1, cfg->video_hfov, cfg->video_vfov)))
     {
         ERROR("Cannot create HUD");
         goto error;
@@ -231,14 +231,22 @@ void application_mainloop(application_t *app)
             double dlon = cos(lat) * (node->lon - lon);
             float dalt = node->alt - alt;
             float dist = sqrt(dlat*dlat + dlon*dlon) * EARTH_RADIUS;
+
+            // Calculate projection angle
             float hangle_tmp = atan2(dlon, dlat) - att[2];
             float vangle_tmp = atan(dalt / dist) - att[1];
             float cosz = cos(att[0]);
             float sinz = sin(att[0]);
+
+            // Reset to <-pi;pi> interval, rotate and clamp
+            hangle_tmp = hangle_tmp < M_PI ? hangle_tmp : hangle_tmp - 2 * M_PI;
+            hangle_tmp = hangle_tmp > -M_PI ? hangle_tmp : hangle_tmp + 2 * M_PI;
+            vangle_tmp = vangle_tmp < M_PI ? vangle_tmp : vangle_tmp - 2 * M_PI;
+            vangle_tmp = vangle_tmp > -M_PI ? vangle_tmp : vangle_tmp + 2 * M_PI;
             float hangle = hangle_tmp * cosz - vangle_tmp * sinz;
             float vangle = hangle_tmp * sinz - vangle_tmp * cosz;
-
             if((hangle < app->video_hfov / -2.0) || (hangle > app->video_hfov / 2.0) || (vangle < app->video_vfov / -2.0) || (vangle > app->video_vfov / 2.0)) continue;
+
             INFO("Projecting landmark hangle = %f, vangle = %f, distance = %f", hangle, vangle, dist / 1000.0);
             uint32_t x = (float)app->video_width  / 2 + (float)app->video_width  * hangle / app->video_hfov;
             uint32_t y = (float)app->video_height / 2 + (float)app->video_height * vangle / app->video_vfov;

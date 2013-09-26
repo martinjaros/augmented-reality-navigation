@@ -115,7 +115,7 @@ int graphics_flush(graphics_t *g, const uint8_t *color);
  * @param scale Relative scale (0-1)
  * @param rotation Rotation angle in radians
  */
-void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y, float scale, float rotation);
+void graphics_draw(graphics_t *g, drawable_t *d, int x, int y, float scale, float rotation);
 
 /**
  * @brief Creates drawable label
@@ -143,10 +143,11 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
  * @param atlas Atlas object as returned by `graphics_atlas_create()`
  * @param color RGBA color
  * @param font_size Size of font
+ * @param hfov Horizontal field of view in radians
  * @param vfov Vertical field of view in radians
  * @return HUD object
  */
-hud_t *graphics_hud_create(graphics_t *g, atlas_t *atlas, uint8_t color[4], uint32_t font_size, float vfov);
+hud_t *graphics_hud_create(graphics_t *g, atlas_t *atlas, uint8_t color[4], uint32_t font_size, float hfov, float vfov);
 
 /**
  * @brief Draws HUD overlay
@@ -159,7 +160,7 @@ hud_t *graphics_hud_create(graphics_t *g, atlas_t *atlas, uint8_t color[4], uint
  * @param distance Distance to waypoint in kilometers
  * @param waypoint Waypoint name shown centered on top
  */
-void graphics_hud_draw(hud_t *hud, float attidude[3], float speed, float altitude, float track, float bearing, float distance, const char *waypoint);
+void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitude, float track, float bearing, float distance, const char *waypoint);
 
 /**
  * @brief Releases resources from HUD object

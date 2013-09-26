@@ -26,6 +26,7 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
 
 /* Atlas character mapping, using characters 32 - 255 of ISO-8859-1 / Unicode */
@@ -130,12 +131,12 @@ atlas_t *graphics_atlas_create(const char *font, uint32_t size)
         // Load glyph
         glTexSubImage2D(GL_TEXTURE_2D, 0, offset_x, offset_y, face->glyph->bitmap.width, face->glyph->bitmap.rows,
                         GL_ALPHA, GL_UNSIGNED_BYTE, face->glyph->bitmap.buffer);
-        atlas->chars[i].advance_x = face->glyph->advance.x >> 6;
-        atlas->chars[i].advance_y = face->glyph->advance.y >> 6;
-        atlas->chars[i].width = face->glyph->bitmap.width;
-        atlas->chars[i].height = face->glyph->bitmap.rows;
-        atlas->chars[i].left = face->glyph->bitmap_left;
-        atlas->chars[i].top = face->glyph->bitmap_top;
+        atlas->chars[i].advance_x = (face->glyph->advance.x >> 6) + (face->glyph->advance.x >> 6) % 2;
+        atlas->chars[i].advance_y = (face->glyph->advance.y >> 6) + (face->glyph->advance.y >> 6) % 2;
+        atlas->chars[i].width = face->glyph->bitmap.width + face->glyph->bitmap.width % 2;
+        atlas->chars[i].height = face->glyph->bitmap.rows + face->glyph->bitmap.rows % 2;
+        atlas->chars[i].left = face->glyph->bitmap_left + face->glyph->bitmap_left % 2;
+        atlas->chars[i].top = face->glyph->bitmap_top + face->glyph->bitmap_top % 2;
         atlas->chars[i].tex_x = offset_x / (float)ATLAS_TEXTURE_WIDTH;
         atlas->chars[i].tex_y = offset_y / (float)ATLAS_TEXTURE_HEIGHT;
         row_height = MAX(row_height, face->glyph->bitmap.rows);
@@ -193,7 +194,7 @@ void graphics_label_set_text(drawable_t *d, const char *text)
     GLfloat array[strlen(text) * 24];
     GLuint num = 0;
 
-    float row_height = 0;
+    float row_top = 0, row_bottom = 0;
     float scale_x = 2.0 / label->g->width;
     float scale_y = 2.0 / label->g->height;
     float pos_x = 0;
@@ -206,7 +207,7 @@ void graphics_label_set_text(drawable_t *d, const char *text)
         uint8_t c = *pc - ATLAS_MAP_OFFSET;
         if(c >= ATLAS_MAP_LENGTH) continue;
         float left = pos_x + label->atlas->chars[c].left * scale_x;
-        float top = pos_y - label->atlas->chars[c].top * scale_y;
+        float top = pos_y + label->atlas->chars[c].top * scale_y;
         float width = label->atlas->chars[c].width * scale_x;
         float height = label->atlas->chars[c].height * scale_y;
 
@@ -214,49 +215,50 @@ void graphics_label_set_text(drawable_t *d, const char *text)
         pos_y += label->atlas->chars[c].advance_y * scale_y;
         if (!width || !height) continue;
 
+        row_top = MAX(row_top, top);
+        row_bottom = MIN(row_bottom, top - height);
+
         // Left bottom
         array[num + 0] = left;
-        array[num + 1] = -top;
+        array[num + 1] = top;
         array[num + 2] = label->atlas->chars[c].tex_x;
         array[num + 3] = label->atlas->chars[c].tex_y;
         num += 4;
 
         // Right bottom
         array[num + 0] = left + width;
-        array[num + 1] = -top;
+        array[num + 1] = top;
         array[num + 2] = label->atlas->chars[c].tex_x + label->atlas->chars[c].width / ATLAS_TEXTURE_WIDTH;
         array[num + 3] = label->atlas->chars[c].tex_y;
         num += 4;
 
         // Left top
         array[num + 0] = left;
-        array[num + 1] = -top - height;
+        array[num + 1] = top - height;
         array[num + 2] = label->atlas->chars[c].tex_x;
         array[num + 3] = label->atlas->chars[c].tex_y + label->atlas->chars[c].height / ATLAS_TEXTURE_HEIGHT;
         num += 4;
 
         // Right bottom
         array[num + 0] = left + width;
-        array[num + 1] = -top;
+        array[num + 1] = top;
         array[num + 2] = label->atlas->chars[c].tex_x + label->atlas->chars[c].width / ATLAS_TEXTURE_WIDTH;
         array[num + 3] = label->atlas->chars[c].tex_y;
         num += 4;
 
         // Left top
         array[num + 0] = left;
-        array[num + 1] = -top - height;
+        array[num + 1] = top - height;
         array[num + 2] = label->atlas->chars[c].tex_x;
         array[num + 3] = label->atlas->chars[c].tex_y + label->atlas->chars[c].height / ATLAS_TEXTURE_HEIGHT;
         num += 4;
 
         // Right top
         array[num + 0] = left + width;
-        array[num + 1] = -top - height;
+        array[num + 1] = top - height;
         array[num + 2] = label->atlas->chars[c].tex_x + label->atlas->chars[c].width / ATLAS_TEXTURE_WIDTH;
         array[num + 3] = label->atlas->chars[c].tex_y + label->atlas->chars[c].height / ATLAS_TEXTURE_HEIGHT;
         num += 4;
-
-        row_height = MAX(row_height, height);
     }
 
     // Calculate offset for anchor
@@ -267,17 +269,17 @@ void graphics_label_set_text(drawable_t *d, const char *text)
         {
             case ANCHOR_LEFT_BOTTOM:
             case ANCHOR_LEFT_TOP:
-                offset_y = row_height;
+                offset_y = row_top - row_bottom;
                 break;
 
             case ANCHOR_CENTER_TOP:
                 offset_x = (array[num - 4] - array[0]) / 2.0;
-                offset_y = row_height;
+                offset_y = row_top - row_bottom;
                 break;
 
             case ANCHOR_RIGHT_TOP:
                 offset_x = (array[num - 4] - array[0]);
-                offset_y = row_height;
+                offset_y = row_top - row_bottom;
                 break;
 
             case ANCHOR_RIGHT_BOTTOM:
@@ -290,7 +292,7 @@ void graphics_label_set_text(drawable_t *d, const char *text)
 
             case ANCHOR_CENTER:
                 offset_x = (array[num - 4] - array[0]) / 2.0;
-                offset_y = row_height / 2.0;
+                offset_y = (row_top - row_bottom) / 2.0;
         }
 
         // Apply offset

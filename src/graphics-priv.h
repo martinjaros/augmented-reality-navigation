@@ -44,11 +44,12 @@ struct _graphics
 struct _drawable
 {
     // Drawable type
-    enum { DRAWABLE_LABEL, DRAWABLE_IMAGE } type;
+    enum { DRAWABLE_BASE, DRAWABLE_LABEL, DRAWABLE_IMAGE } type;
 
     // Vertex buffer, its length and texture
     GLuint vbo, num, tex;
 
+    // Drawing mode (lines / triangles)
     GLenum mode;
 
     // Colors

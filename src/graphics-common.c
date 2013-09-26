@@ -30,7 +30,7 @@ struct _drawable_image
     GLuint width, height;
 };
 
-void graphics_draw(graphics_t *g, drawable_t *d, uint32_t x, uint32_t y, float scale, float rotation)
+void graphics_draw(graphics_t *g, drawable_t *d, int x, int y, float scale, float rotation)
 {
     DEBUG("graphics_draw()");
     assert(g != 0);
@@ -161,6 +161,6 @@ void graphics_drawable_free(drawable_t *d)
     assert(d != 0);
 
     glDeleteBuffers(1, &d->vbo);
-    if(d->type == DRAWABLE_IMAGE) glDeleteTextures(1, &d->tex);
+    if(d->type != DRAWABLE_LABEL) glDeleteTextures(1, &d->tex);
     free(d);
 }

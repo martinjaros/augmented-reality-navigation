@@ -62,8 +62,8 @@ static void *worker(void *arg)
         pthread_mutex_lock(&gps->mutex);
         if(sscanf(buf, "$GPGGA,%2hu%2hu%f,%2hu%f,%c,%3hu%f,%c,1,%hu,%*f,%f,M,%*s",
                   &gps->hr, &gps->min, &gps->sec, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->sat_num, &gps->alt) != 11)
-        if(sscanf(buf, "$GPRMB,A,%f,%c,%32[^,],%32[^,],%2hu%f,%c,%3hu%f,%c,%f,%f,%f,%*s",
-                  &gps->xte, &gps->xte_dir, gps->orig, gps->dest, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->dst, &gps->brg, &gps->spd) != 13)
+        if(sscanf(buf, "$GPRMB,A,%f,%c,%32[^,],%32[^,],%*f,%*c,%*f,%*c,%f,%f,%*s",
+                  &gps->xte, &gps->xte_dir, gps->orig, gps->dest, &gps->dst, &gps->brg) != 6)
         if(sscanf(buf, "$GPRMC,%2hu%2hu%f,A,%2hu%f,%c,%3hu%f,%c,%f,%f,%*s",
                   &gps->hr, &gps->min, &gps->sec, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->spd, &gps->trk) != 11)
         {

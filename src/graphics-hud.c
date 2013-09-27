@@ -371,7 +371,7 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
     }
 
     // Draw track marker
-    hangle = track - attitude[2];
+    hangle = track / 180 * M_PI - attitude[2];
     hangle = hangle < M_PI ? hangle : hangle - 2 * M_PI;
     hangle = hangle > -M_PI ? hangle : hangle + 2 * M_PI;
     if(hangle < hud->hfov / -2.0) hangle = hud->hfov / -2.0;

@@ -1,3 +1,4 @@
+ * xlib replaced by xcb
  * fixed gps parser
  * fixed text pixel alignment
  * added horizon line and compass tape

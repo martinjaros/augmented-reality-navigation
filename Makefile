@@ -15,7 +15,7 @@ endif
 
 ifdef X11BUILD
 	CFLAGS += -DX11BUILD
-	LIBS += -lX11
+	LIBS += -lxcb
 endif
 
 ifdef TRACE_LEVEL

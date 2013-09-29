@@ -21,7 +21,7 @@ Libraries
  * freetype2
  * EGL
  * GLESv2
- * X11 (optional)
+ * xcb (optional)
 
 HARDWARE
 --------

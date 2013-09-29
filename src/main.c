@@ -19,48 +19,33 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef X11BUILD
-#include <X11/Xlib.h>
-#endif /* X11BUILD */
-
 #include "debug.h"
 #include "application.h"
 
 #define BUFFER_SIZE     128
 
+#ifdef X11BUILD
+#include <xcb/xcb.h>
 static unsigned long window_create(uint32_t width, uint32_t height)
 {
-#ifdef X11BUILD
-
-    // Open display
-    Display *display = XOpenDisplay(NULL);
-    if(!display)
-    {
-        WARN("Failed to open X display");
-        return 0;
-    }
+    xcb_connection_t *conn = xcb_connect(NULL, NULL);
+    xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
+    xcb_window_t window = xcb_generate_id(conn);
 
     // Create window
-    unsigned long color = BlackPixel(display, 0);
-    Window root = RootWindow(display, 0);
-    Window window = XCreateSimpleWindow(display, root, 0, 0, width, height, 0, color, color);
-    XMapWindow(display, window);
-    XFlush(display);
+    xcb_create_window(conn, XCB_COPY_FROM_PARENT, window, screen->root, 0, 0, width, height, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, screen->root_visual, 0, NULL);
+    xcb_map_window(conn, window);
+    xcb_flush(conn);
 
-    INFO("Created window 0x%x", (uint32_t)window);
     return window;
-
-#else /* X11BUILD */
-    return 0;
-#endif
 }
+#else /* X11BUILD */
+#define window_create(width, height)  0
+#endif
 
 int main(int argc, char *argv[])
 {
     DEBUG("main()");
-
-    int i;
-    for(i = 0; i < argc; i++) INFO("Argument %d = %s", i, argv[i]);
 
     // Base configuration
     static struct config cfg =
@@ -87,8 +72,10 @@ int main(int argc, char *argv[])
         .gps_device = "/dev/null"
     };
 
-    if(argc == 2)
+    if(argc > 1)
     {
+        INFO("Using config file `%s`", argv[1]);
+
         // Read configuration
         FILE *f = fopen(argv[1], "r");
         if(!f)

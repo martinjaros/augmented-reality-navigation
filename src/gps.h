@@ -58,13 +58,6 @@ typedef struct _gps gps_t;
 gps_t *gps_init(const char *device);
 
 /**
- * @brief Gets time information
- * @param gps Object returned by `gps_init()`
- * @param[out] time Time of day in seconds
- */
-void gps_get_time(gps_t *gps, double *time);
-
-/**
  * @brief Gets position information
  * @param gps Object returned by `gps_init()`
  * @param[out] lat Latitude in radians
@@ -77,7 +70,7 @@ void gps_get_pos(gps_t *gps, double *lat, double *lon, float *alt);
  * @brief Gets track information
  * @param gps Object returned by `gps_init()`
  * @param[out] speed Speed in km/h
- * @param[out] track Track angle in degrees
+ * @param[out] track Track angle in radians
  */
 void gps_get_track(gps_t *gps, float *speed, float *track);
 
@@ -85,10 +78,10 @@ void gps_get_track(gps_t *gps, float *speed, float *track);
  * @brief Gets route information
  * @param gps Object returned by `gps_init()`
  * @param[out] waypoint Name of the waypoint (32 characters max)
- * @param[out] range Waypoint range in km
- * @param[out] bearing Bearing to waypoint in degrees
+ * @param[out] distance Waypoint range in km
+ * @param[out] bearing Bearing to waypoint in radians
  */
-void gps_get_route(gps_t *gps, char *waypoint, float *range, float *bearing);
+void gps_get_route(gps_t *gps, char *waypoint, float *distance, float *bearing);
 
 /**
  * @brief Releases resources

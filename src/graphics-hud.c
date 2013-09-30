@@ -371,7 +371,7 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
     }
 
     // Draw track marker
-    hangle = track / 180 * M_PI - attitude[2];
+    hangle = track - attitude[2];
     hangle = hangle < M_PI ? hangle : hangle - 2 * M_PI;
     hangle = hangle > -M_PI ? hangle : hangle + 2 * M_PI;
     if(hangle < hud->hfov / -2.0) hangle = hud->hfov / -2.0;
@@ -379,7 +379,7 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
     graphics_draw(hud->g, hud->track_marker, (float)hud->g->width / 2 + (float)hud->g->width * hangle / hud->hfov, hud->g->height - 32, 1, 0);
 
     // Draw bearing marker
-    hangle = bearing / 180 * M_PI - attitude[2];
+    hangle = bearing - attitude[2];
     hangle = hangle < M_PI ? hangle : hangle - 2 * M_PI;
     hangle = hangle > -M_PI ? hangle : hangle + 2 * M_PI;
     if(hangle < hud->hfov / -2.0) hangle = hud->hfov / -2.0;

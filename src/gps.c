@@ -25,9 +25,12 @@
 #include <termios.h>
 #include <math.h>
 #include <pthread.h>
+#include <time.h>
 
 #include "debug.h"
 #include "gps.h"
+
+#define EARTH_RADIUS    6371000.0
 
 /* Nautical mile to kilometer conversion */
 #define NM2KM           1.852
@@ -40,10 +43,10 @@ struct _gps
     int fd;
     pthread_t thread;
     pthread_mutex_t mutex;
-
-    uint16_t hr, min, lat_deg, lon_deg, sat_num;
-    float sec, lat_min, lon_min, alt, spd, trk, brg, dst, xte;
-    char lat_dir, lon_dir, xte_dir, orig[32], dest[32];
+    double lattitude, longitude, lat_offset, lon_offset;
+    float altitude, speed, track, bearing, distance;
+    char waypoint[32];
+    struct timespec reftime;
 };
 
 static void *worker(void *arg)
@@ -59,16 +62,49 @@ static void *worker(void *arg)
         buf[len - 1] = 0;
         INFO("Received sentence `%s`", buf);
 
+        double lat_deg, lon_deg, lat_min, lon_min;
+        char lat_dir, lon_dir;
+        float tmpf1, tmpf2;
+
+        // Lock shared access
         pthread_mutex_lock(&gps->mutex);
-        if(sscanf(buf, "$GPGGA,%2hu%2hu%f,%2hu%f,%c,%3hu%f,%c,1,%hu,%*f,%f,M,%*s",
-                  &gps->hr, &gps->min, &gps->sec, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->sat_num, &gps->alt) != 11)
-        if(sscanf(buf, "$GPRMB,A,%f,%c,%32[^,],%32[^,],%*f,%*c,%*f,%*c,%f,%f,%*s",
-                  &gps->xte, &gps->xte_dir, gps->orig, gps->dest, &gps->dst, &gps->brg) != 6)
-        if(sscanf(buf, "$GPRMC,%2hu%2hu%f,A,%2hu%f,%c,%3hu%f,%c,%f,%f,%*s",
-                  &gps->hr, &gps->min, &gps->sec, &gps->lat_deg, &gps->lat_min, &gps->lat_dir, &gps->lon_deg, &gps->lon_min, &gps->lon_dir, &gps->spd, &gps->trk) != 11)
+
+        if(sscanf(buf, "$GPGGA,%*f,%2lf%lf,%c,%3lf%lf,%c,1,%*u,%*f,%f,M,%*s",
+            &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &gps->altitude) == 7)
+        {
+            gps->lattitude = (lat_dir == 'N' ? 1 : -1) * (lat_deg + lat_min / 60) / 180 * M_PI;
+            gps->longitude = (lon_dir == 'E' ? 1 : -1) * (lon_deg + lon_min / 60) / 180 * M_PI;
+
+            // Set reference for interpolation
+            clock_gettime(CLOCK_MONOTONIC, &gps->reftime);
+            gps->lat_offset = 0;
+            gps->lon_offset = 0;
+        }
+        else if(sscanf(buf, "$GPRMB,A,%*f,%*c,%*[^,],%32[^,],%*f,%*c,%*f,%*c,%f,%f,%*s",
+            gps->waypoint, &tmpf1, &tmpf2) == 3)
+        {
+            gps->distance = tmpf1 * NM2KM;
+            gps->bearing = tmpf2 / 180 * M_PI;
+        }
+        else if(sscanf(buf, "$GPRMC,%*f,A,%2lf%lf,%c,%3lf%lf,%c,%f,%f,%*s",
+            &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &tmpf1, &tmpf2) == 8)
+        {
+            gps->lattitude = (lat_dir == 'N' ? 1 : -1) * (lat_deg + lat_min / 60) / 180 * M_PI;
+            gps->longitude = (lon_dir == 'E' ? 1 : -1) * (lon_deg + lon_min / 60) / 180 * M_PI;
+            gps->speed = tmpf1 * NM2KM;
+            gps->track = tmpf2 / 180 * M_PI;
+
+            // Set reference for interpolation
+            clock_gettime(CLOCK_MONOTONIC, &gps->reftime);
+            gps->lat_offset = 0;
+            gps->lon_offset = 0;
+        }
+        else
         {
             WARN("Unknown sentence or parse error");
         }
+
+        // Unlock shared access
         pthread_mutex_unlock(&gps->mutex);
     }
 
@@ -117,25 +153,27 @@ gps_t *gps_init(const char *device)
     return gps;
 }
 
-void gps_get_time(gps_t *gps, double *time)
-{
-    DEBUG("gps_get_time()");
-    assert(gps != 0);
-
-    pthread_mutex_lock(&gps->mutex);
-    if(time) *time = (float)gps->hr * 3600.0 + (float)gps->min * 60.0 + gps->sec;
-    pthread_mutex_unlock(&gps->mutex);
-}
-
 void gps_get_pos(gps_t *gps, double *lat, double *lon, float *alt)
 {
     DEBUG("gps_get_pos()");
     assert(gps != 0);
 
     pthread_mutex_lock(&gps->mutex);
-    if(lat) *lat = (gps->lat_dir == 'N' ? 1 : -1) * ((float)gps->lat_deg + (gps->lat_min / 60.0)) / 180 * M_PI;
-    if(lon) *lon = (gps->lon_dir == 'E' ? 1 : -1) * ((float)gps->lon_deg + (gps->lon_min / 60.0)) / 180 * M_PI;
-    if(alt) *alt = gps->alt;
+
+    // Interpolate position
+    struct timespec currtime;
+    clock_gettime(CLOCK_MONOTONIC, &currtime);
+    float difftime = (float)currtime.tv_sec - (float)gps->reftime.tv_sec +
+                     (float)currtime.tv_nsec / 1e9 - (float)gps->reftime.tv_nsec / 1e9;
+    float delta = gps->speed * 3.6 * difftime / EARTH_RADIUS;
+    gps->reftime.tv_sec = currtime.tv_sec;
+    gps->reftime.tv_nsec = currtime.tv_nsec;
+    gps->lat_offset += cosf(gps->track) * delta;
+    gps->lon_offset += sinf(gps->track) * delta / (lat ? cosf(*lat) : 1);
+    if(lat) *lat = gps->lattitude + gps->lat_offset;
+    if(lon) *lon = gps->longitude + gps->lon_offset;
+    if(alt) *alt = gps->altitude;
+
     pthread_mutex_unlock(&gps->mutex);
 }
 
@@ -145,20 +183,20 @@ void gps_get_track(gps_t *gps, float *speed, float *track)
     assert(gps != 0);
 
     pthread_mutex_lock(&gps->mutex);
-    if(speed) *speed = gps->spd * NM2KM;
-    if(track) *track = gps->trk;
+    if(speed) *speed = gps->speed;
+    if(track) *track = gps->track;
     pthread_mutex_unlock(&gps->mutex);
 }
 
-void gps_get_route(gps_t *gps, char *waypoint, float *range, float *bearing)
+void gps_get_route(gps_t *gps, char *waypoint, float *distance, float *bearing)
 {
     DEBUG("gps_get_route()");
     assert(gps != 0);
 
     pthread_mutex_lock(&gps->mutex);
-    if(waypoint) strcpy(waypoint, gps->dest);
-    if(range) *range = gps->dst * NM2KM;
-    if(bearing) *bearing = gps->brg;
+    if(waypoint) strcpy(waypoint, gps->waypoint);
+    if(distance) *distance = gps->distance;
+    if(bearing) *bearing = gps->bearing;
     pthread_mutex_unlock(&gps->mutex);
 }
 

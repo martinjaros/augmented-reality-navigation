@@ -155,8 +155,8 @@ hud_t *graphics_hud_create(graphics_t *g, atlas_t *atlas, uint8_t color[4], uint
  * @param attitude Roll, bank and yaw angles in radians
  * @param speed Speed in km/h
  * @param altitude Altitude in meters
- * @param track Track angle in degrees
- * @param bearing Bearing to waypoint in degrees
+ * @param track Track angle in radians
+ * @param bearing Bearing to waypoint in radians
  * @param distance Distance to waypoint in kilometers
  * @param waypoint Waypoint name shown centered on top
  */

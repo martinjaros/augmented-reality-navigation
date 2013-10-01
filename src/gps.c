@@ -30,10 +30,14 @@
 #include "debug.h"
 #include "gps.h"
 
+/* Earth radius in meters */
 #define EARTH_RADIUS    6371000.0
 
 /* Nautical mile to kilometer conversion */
 #define NM2KM           1.852
+
+/* km/h to m/s conversion */
+#define KMH2MS          3.6
 
 /* I/O Buffer size */
 #define BUFFER_SIZE     256
@@ -165,12 +169,13 @@ void gps_get_pos(gps_t *gps, double *lat, double *lon, float *alt)
     clock_gettime(CLOCK_MONOTONIC, &currtime);
     float difftime = (float)currtime.tv_sec - (float)gps->reftime.tv_sec +
                      (float)currtime.tv_nsec / 1e9 - (float)gps->reftime.tv_nsec / 1e9;
-    float delta = gps->speed * 3.6 * difftime / EARTH_RADIUS;
+    float delta = gps->speed * KMH2MS * difftime / EARTH_RADIUS;
     gps->reftime.tv_sec = currtime.tv_sec;
     gps->reftime.tv_nsec = currtime.tv_nsec;
     gps->lat_offset += cosf(gps->track) * delta;
-    gps->lon_offset += sinf(gps->track) * delta / (lat ? cosf(*lat) : 1);
-    if(lat) *lat = gps->lattitude + gps->lat_offset;
+    float tmp = gps->lattitude + gps->lat_offset;
+    gps->lon_offset += sinf(gps->track) * delta / cosf(tmp);
+    if(lat) *lat = tmp;
     if(lon) *lon = gps->longitude + gps->lon_offset;
     if(alt) *alt = gps->altitude;
 

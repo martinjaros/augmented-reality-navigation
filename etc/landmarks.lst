@@ -1,3 +1,14 @@
 # Encoding ISO/IEC 8859-1
-# Test landmark (lat[rad], lon[rad], alt[m], name)
-16e-5, 0, 0, Hêllö Wørld²
+# Test landmarks (lat[rad], lon[rad], alt[m], name)
+16e-5, 1e-5, 0, testA
+16e-5, -1e-5, 100, testB
+16e-5, 1e-5, 200, testC
+16e-5, -1e-5, 300, testD
+16e-5, 1e-5, 400, testE
+16e-5, -1e-5, -100, testF
+16e-5, 1e-5, -200, testG
+16e-5, -1e-5, -300, testH
+16e-5, 1e-5, -400, testI
+16e-5, -10e-5, 0, testJ
+16e-5, 20e-5, 0, testK
+16e-5, -30e-5, 0, testL

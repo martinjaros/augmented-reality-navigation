@@ -24,6 +24,8 @@
 
 #include <stdint.h>
 
+#include "imu-config.h"
+
 /**
  * @brief Application configuration structure
  */
@@ -40,6 +42,11 @@ struct config
      * @brief Native window id
      */
     unsigned long app_window_id;
+
+    /**
+     * @brief Landmark visible distance in meters
+     */
+    float app_landmark_vis_dist;
 
 
     /************* VIDEO *************/
@@ -116,34 +123,9 @@ struct config
     char *imu_device;
 
     /**
-     * @brief Gyroscope scale coefficient
+     * @brief IMU configuration
      */
-    float imu_gyro_scale;
-
-    /**
-     * @brief Gyroscope zero offset per axis (radian per second)
-     */
-    float imu_gyro_offset[3];
-
-    /**
-     * @brief Compass declination (radian)
-     */
-    float imu_mag_declination;
-
-    /**
-     * @brief Compass inclination (radian)
-     */
-    float imu_mag_inclination;
-
-    /**
-     * @brief Relative weight of the compass measurements
-     */
-    float imu_mag_weight;
-
-    /**
-     * @brief Relative weight of the accelerometer measurements
-     */
-    float imu_acc_weight;
+    struct imu_config imu_conf;
 
 
     /************* GPS *************/

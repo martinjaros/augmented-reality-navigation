@@ -50,6 +50,8 @@ int main(int argc, char *argv[])
     // Base configuration
     static struct config cfg =
     {
+        .app_landmark_vis_dist = 5000,
+
         .video_device = "/dev/video0",
         .video_width = 800,
         .video_height = 600,
@@ -65,9 +67,12 @@ int main(int argc, char *argv[])
         .graphics_font_size_2 = 12,
 
         .imu_device = "/dev/null",
-        .imu_gyro_scale = 1,
-        .imu_mag_weight = 0.2,
-        .imu_acc_weight = 0.2,
+        .imu_conf =
+        {
+            .gyro_offset = { 0, 0, 0 },
+            .gyro_weight = .8,
+            .gyro_scale = 0.00053264847315724, // 1000 deg/s
+        },
 
         .gps_device = "/dev/null"
     };
@@ -98,6 +103,7 @@ int main(int argc, char *argv[])
                 // Parse line
                 char *interlace = NULL;
                 if(sscanf(str, "app_landmarks_file = %ms", &cfg.app_landmarks_file) != 1)
+                if(sscanf(str, "app_landmark_vis_dist = %f", &cfg.app_landmark_vis_dist) != 1)
                 if(sscanf(str, "video_device = %ms", &cfg.video_device) != 1)
                 if(sscanf(str, "video_width = %u", &cfg.video_width) != 1)
                 if(sscanf(str, "video_height = %u", &cfg.video_height) != 1)
@@ -111,14 +117,11 @@ int main(int argc, char *argv[])
                 if(sscanf(str, "graphics_font_size_1 = %hhu", &cfg.graphics_font_size_1) != 1)
                 if(sscanf(str, "graphics_font_size_2 = %hhu", &cfg.graphics_font_size_2) != 1)
                 if(sscanf(str, "imu_device = %ms", &cfg.imu_device) != 1)
-                if(sscanf(str, "imu_gyro_scale = %f", &cfg.imu_gyro_scale) != 1)
-                if(sscanf(str, "imu_gyro_offset_x = %f", &cfg.imu_gyro_offset[0]) != 1)
-                if(sscanf(str, "imu_gyro_offset_y = %f", &cfg.imu_gyro_offset[1]) != 1)
-                if(sscanf(str, "imu_gyro_offset_z = %f", &cfg.imu_gyro_offset[2]) != 1)
-                if(sscanf(str, "imu_mag_declination = %f", &cfg.imu_mag_declination) != 1)
-                if(sscanf(str, "imu_mag_inclination = %f", &cfg.imu_mag_inclination) != 1)
-                if(sscanf(str, "imu_mag_weight = %f", &cfg.imu_mag_weight) != 1)
-                if(sscanf(str, "imu_acc_weight = %f", &cfg.imu_acc_weight) != 1)
+                if(sscanf(str, "imu_gyro_offset_x = %hd", &cfg.imu_conf.gyro_offset[0]) != 1)
+                if(sscanf(str, "imu_gyro_offset_y = %hd", &cfg.imu_conf.gyro_offset[1]) != 1)
+                if(sscanf(str, "imu_gyro_offset_z = %hd", &cfg.imu_conf.gyro_offset[2]) != 1)
+                if(sscanf(str, "imu_gyro_weight = %f", &cfg.imu_conf.gyro_weight) != 1)
+                if(sscanf(str, "imu_gyro_scale = %f", &cfg.imu_conf.gyro_scale) != 1)
                 if(sscanf(str, "gps_device = %ms", &cfg.gps_device) != 1)
                 {
                     WARN("Unknown parameter or parse error");

@@ -345,14 +345,15 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
     graphics_draw(hud->g, hud->altitude_label, hud->g->width - 10, 10, 1, 0);
 
     // Draw horizon line
-    vangle = attitude[1] < M_PI ? attitude[1] : attitude[1] - 2 * M_PI;
+    vangle = -attitude[1];
+    vangle = vangle < M_PI ? vangle : vangle - 2 * M_PI;
     vangle = vangle > -M_PI ? vangle : vangle + 2 * M_PI;
     if(vangle < hud->vfov / -2.0)
         graphics_draw(hud->g, hud->horizon_alt, hud->g->width / 2, 100, 1, 0);
     else if(vangle > hud->vfov / 2.0)
         graphics_draw(hud->g, hud->horizon_alt, hud->g->width / 2, (float)hud->g->height - 100, 1, M_PI);
     else
-        graphics_draw(hud->g, hud->horizon_line, hud->g->width / 2, (float)hud->g->height / 2 + (float)hud->g->height * vangle / hud->vfov, 1, attitude[0]);
+        graphics_draw(hud->g, hud->horizon_line, hud->g->width / 2, (float)hud->g->height / 2 + (float)hud->g->height * vangle / hud->vfov, 1, -attitude[0]);
 
     // Draw compass lines
     graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * attitude[2] / hud->hfov, hud->g->height - 30, 1, 0);

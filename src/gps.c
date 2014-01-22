@@ -37,7 +37,7 @@
 #define NM2KM           1.852
 
 /* km/h to m/s conversion */
-#define KMH2MS          3.6
+#define KMH2MS          1/3.6
 
 /* I/O Buffer size */
 #define BUFFER_SIZE     256
@@ -84,7 +84,7 @@ static void *worker(void *arg)
             gps->lat_offset = 0;
             gps->lon_offset = 0;
         }
-        else if(sscanf(buf, "$GPRMB,A,%*f,%*c,%*[^,],%32[^,],%*f,%*c,%*f,%*c,%f,%f,%*s",
+        else if(sscanf(buf, "$GPRMB,A,%*f,%*c,,%32[^,],%*f,%*c,%*f,%*c,%f,%f,%*s",
             gps->waypoint, &tmpf1, &tmpf2) == 3)
         {
             gps->distance = tmpf1 * NM2KM;

@@ -1,3 +1,6 @@
+0.5
+ * reimplemented DCM algorithm
+ * added test scripts for gps, imu and video
  * interpolated gps position
  * xlib replaced by xcb
  * fixed gps parser

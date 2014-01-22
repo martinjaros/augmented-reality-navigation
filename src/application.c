@@ -54,6 +54,7 @@ struct _application
 
     uint32_t video_width, video_height;
     float video_hfov, video_vfov;
+    float visible_distance;
 };
 
 application_t *application_init(struct config *cfg)
@@ -101,7 +102,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Initialize IMU
-    if(!(app->imu = imu_init(cfg->imu_device, cfg->imu_gyro_scale, cfg->imu_gyro_offset, cfg->imu_mag_declination, cfg->imu_mag_inclination, cfg->imu_mag_weight, cfg->imu_acc_weight)))
+    if(!(app->imu = imu_init(cfg->imu_device, &cfg->imu_conf)))
     {
         ERROR("Cannot initialize IMU");
         goto error;
@@ -175,6 +176,7 @@ application_t *application_init(struct config *cfg)
     app->video_height = cfg->video_height;
     app->video_hfov = cfg->video_hfov;
     app->video_vfov = cfg->video_vfov;
+    app->visible_distance = cfg->app_landmark_vis_dist;
 
     return app;
 
@@ -222,7 +224,7 @@ void application_mainloop(application_t *app)
         graphics_draw(app->graphics, app->image, 0, 0, 1, 0);
 
         // Draw landmarks
-        imu_get_attitude(app->imu, &att[0], &att[1], &att[2]);
+        imu_get_attitude(app->imu, att);
         gps_get_pos(app->gps, &lat, &lon, &alt);
         struct landmark_node *node;
         for(node = app->landmark; node; node = node->next)
@@ -234,9 +236,9 @@ void application_mainloop(application_t *app)
 
             // Calculate projection angle
             float hangle_tmp = atan2(dlon, dlat) - att[2];
-            float vangle_tmp = atan(dalt / dist) - att[1];
-            float cosz = cos(att[0]);
-            float sinz = sin(att[0]);
+            float vangle_tmp = atan(dalt / dist) + att[1];
+            float cosz = cos(-att[0]);
+            float sinz = sin(-att[0]);
 
             // Reset to <-pi;pi> interval, rotate and clamp
             hangle_tmp = hangle_tmp < M_PI ? hangle_tmp : hangle_tmp - 2 * M_PI;
@@ -246,6 +248,7 @@ void application_mainloop(application_t *app)
             float hangle = hangle_tmp * cosz - vangle_tmp * sinz;
             float vangle = hangle_tmp * sinz - vangle_tmp * cosz;
             if((hangle < app->video_hfov / -2.0) || (hangle > app->video_hfov / 2.0) || (vangle < app->video_vfov / -2.0) || (vangle > app->video_vfov / 2.0)) continue;
+            if(dist > app->visible_distance) continue;
 
             INFO("Projecting landmark hangle = %f, vangle = %f, distance = %f", hangle, vangle, dist / 1000.0);
             uint32_t x = (float)app->video_width  / 2 + (float)app->video_width  * hangle / app->video_hfov;

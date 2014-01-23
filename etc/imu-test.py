@@ -16,7 +16,7 @@ try:
         # Turn rate (rad/s)
         rate = radians(.1)
 
-        fifo = open(FIFO, "w")
+        fifo = open(FIFO, "wb")
         starttime = time()
         try:
             while True:

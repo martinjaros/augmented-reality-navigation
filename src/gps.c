@@ -42,6 +42,9 @@
 /* I/O Buffer size */
 #define BUFFER_SIZE     256
 
+/* NMEA 0183 maximum number of tokens */
+#define MAX_TOKENS      32
+
 struct _gps
 {
     int fd;
@@ -53,6 +56,58 @@ struct _gps
     struct timespec reftime;
 };
 
+/* Splits NMEA 0183 sentence into tokens, computes checksum */
+static char** split_tokens(char *s)
+{
+    const char hexmap[] = {'0', '1', '2', '3', '4', '5', '6', '7', '8', '9', 'A', 'B', 'C', 'D', 'E', 'F'};
+    static char *token_list[MAX_TOKENS];
+    int checksum = 0, counter = 0;
+
+    // Check for dolar sign
+    if(*s++ != '$')
+    {
+        WARN("Missing dollar sign");
+        return NULL;
+    }
+    token_list[0] = s;
+
+    while(*s)
+    {
+        // Calculate checksum
+        if(*s == '*')
+        {
+            *s = 0;
+            token_list[++counter] = 0;
+
+            if((*++s != hexmap[checksum >> 4]) || (*++s != hexmap[checksum & 0x0F]))
+            {
+                WARN("Bad checksum");
+                return NULL;
+            }
+
+            if((*++s != '\r') || (*++s != '\n'))
+            {
+                WARN("Missing line termination");
+                return NULL;
+            }
+
+            return token_list;
+        }
+        checksum ^= *s;
+
+        // Split to tokens
+        if(*s == ',')
+        {
+            *s = 0;
+            token_list[++counter] = s + 1;
+        }
+        s++;
+    }
+
+    WARN("Incomplete sentence");
+    return NULL;
+}
+
 static void *worker(void *arg)
 {
     INFO("Thread started");
@@ -60,56 +115,129 @@ static void *worker(void *arg)
 
     char buf[BUFFER_SIZE];
     ssize_t len;
-    while((len = read(gps->fd, buf, BUFFER_SIZE)) != -1)
+    while((len = read(gps->fd, buf, BUFFER_SIZE - 1)) != -1)
     {
         if(len == 0) break;
-        buf[len - 1] = 0;
-        INFO("Received sentence `%s`", buf);
+        buf[len] = 0;
 
-        double lat_deg, lon_deg, lat_min, lon_min;
-        char lat_dir, lon_dir;
-        float tmpf1, tmpf2;
-
-        // Lock shared access
-        pthread_mutex_lock(&gps->mutex);
-
-        if(sscanf(buf, "$GPGGA,%*f,%2lf%lf,%c,%3lf%lf,%c,1,%*u,%*f,%f,M,%*s",
-            &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &gps->altitude) == 7)
+        char **tokens = split_tokens(buf);
+        if(tokens)
         {
-            gps->lattitude = (lat_dir == 'N' ? 1 : -1) * (lat_deg + lat_min / 60) / 180 * M_PI;
-            gps->longitude = (lon_dir == 'E' ? 1 : -1) * (lon_deg + lon_min / 60) / 180 * M_PI;
+            double lat_deg, lat_min, lat_dir;
+            double lon_min, lon_deg, lon_dir;
+            float tmpf1, tmpf2;
 
-            // Set reference for interpolation
-            clock_gettime(CLOCK_MONOTONIC, &gps->reftime);
-            gps->lat_offset = 0;
-            gps->lon_offset = 0;
-        }
-        else if(sscanf(buf, "$GPRMB,A,%*f,%*c,,%32[^,],%*f,%*c,%*f,%*c,%f,%f,%*s",
-            gps->waypoint, &tmpf1, &tmpf2) == 3)
-        {
-            gps->distance = tmpf1 * NM2KM;
-            gps->bearing = tmpf2 / 180 * M_PI;
-        }
-        else if(sscanf(buf, "$GPRMC,%*f,A,%2lf%lf,%c,%3lf%lf,%c,%f,%f,%*s",
-            &lat_deg, &lat_min, &lat_dir, &lon_deg, &lon_min, &lon_dir, &tmpf1, &tmpf2) == 8)
-        {
-            gps->lattitude = (lat_dir == 'N' ? 1 : -1) * (lat_deg + lat_min / 60) / 180 * M_PI;
-            gps->longitude = (lon_dir == 'E' ? 1 : -1) * (lon_deg + lon_min / 60) / 180 * M_PI;
-            gps->speed = tmpf1 * NM2KM;
-            gps->track = tmpf2 / 180 * M_PI;
+            if(strcmp(tokens[0], "GPGGA") == 0)
+            {
+                INFO("Received GGA sentence");
 
-            // Set reference for interpolation
-            clock_gettime(CLOCK_MONOTONIC, &gps->reftime);
-            gps->lat_offset = 0;
-            gps->lon_offset = 0;
-        }
-        else
-        {
-            WARN("Unknown sentence or parse error");
-        }
+                // 1 - Fix time
+                // 2,3 - Latitude
+                if(sscanf(tokens[2], "%2lf%lf", &lat_deg, &lat_min) == 2)
+                if((lat_dir = *tokens[3] == 'N' ? 1 : *tokens[3] == 'S' ? -1 : 0) != 0)
+                // 4,5 - Longitude
+                if(sscanf(tokens[4], "%3lf%lf", &lon_deg, &lon_min) == 2)
+                if((lon_dir = *tokens[5] == 'E' ? 1 : *tokens[5] == 'W' ? -1 : 0) != 0)
+                // 6 - Fix quality
+                if(*tokens[6] == '1')
+                // 7 - Number of satellites
+                // 8 - Horizontal DOP
+                // 9,10 - Altitude AMSL
+                if(sscanf(tokens[9], "%f", &tmpf1) == 1)
+                if(*tokens[10] == 'M')
+                // 11,12 - Height of geoid above WGS84
+                // 13 - time in seconds since last DGPS update
+                // 14 - DGPS station ID number
+                {
+                    pthread_mutex_lock(&gps->mutex);
 
-        // Unlock shared access
-        pthread_mutex_unlock(&gps->mutex);
+                    gps->lattitude = lat_dir * (lat_deg + lat_min / 60.0) / 180.0 * M_PI;
+                    gps->longitude = lon_dir * (lon_deg + lon_min / 60.0) / 180.0 * M_PI;
+                    gps->altitude = tmpf1;
+
+                    // Set reference time for interpolation
+                    clock_gettime(CLOCK_MONOTONIC, &gps->reftime);
+                    gps->lat_offset = 0;
+                    gps->lon_offset = 0;
+
+                    pthread_mutex_unlock(&gps->mutex);
+                    continue;
+                }
+                goto error;
+            }
+
+            if(strcmp(tokens[0], "GPRMB") == 0)
+            {
+                INFO("Received GPRMB sentence");
+
+                // 1 - Data status
+                if(*tokens[1] == 'A')
+                // 2,3 - Cross-track error
+                // 4 - Origin waypoint name
+                // 5 - Destination waypoint name
+                // 6,7 - Waypoint latitude
+                // 8,9 - Waypoint longitude
+                // 10 - Distance
+                if(sscanf(tokens[10], "%f", &tmpf1) == 1)
+                // 11 - Bearing
+                if(sscanf(tokens[11], "%f", &tmpf2) == 1)
+                // 12 - Velocity
+                // 13 - Arrival alarm
+                {
+                    pthread_mutex_lock(&gps->mutex);
+
+                    strncpy(gps->waypoint, tokens[5], sizeof(gps->waypoint));
+                    gps->distance = tmpf1 * NM2KM;
+                    gps->bearing = tmpf2 / 180 * M_PI;
+
+                    pthread_mutex_unlock(&gps->mutex);
+                    continue;
+                }
+                goto error;
+            }
+
+            if(strcmp(tokens[0], "GPRMC") == 0)
+            {
+                INFO("Received GPRMC sentence");
+
+                // 1 - Fix time
+                // 2 - Status
+                if(*tokens[2] == 'A')
+                // 3,4 - Latitude
+                if(sscanf(tokens[3], "%2lf%lf", &lat_deg, &lat_min) == 2)
+                if((lat_dir = *tokens[4] == 'N' ? 1 : *tokens[4] == 'S' ? -1 : 0) != 0)
+                // 5,6 - Longitude
+                if(sscanf(tokens[5], "%3lf%lf", &lon_deg, &lon_min) == 2)
+                if((lon_dir = *tokens[6] == 'E' ? 1 : *tokens[6] == 'W' ? -1 : 0) != 0)
+                // 7 - Speed
+                if(sscanf(tokens[7], "%f", &tmpf1) == 1)
+                // 8 - Track angle
+                if(sscanf(tokens[8], "%f", &tmpf2) == 1)
+                // 9 - Date
+                // 10 - Magnetic variation
+                {
+                    pthread_mutex_lock(&gps->mutex);
+
+                    gps->lattitude = lat_dir * (lat_deg + lat_min / 60.0) / 180.0 * M_PI;
+                    gps->longitude = lon_dir * (lon_deg + lon_min / 60.0) / 180.0 * M_PI;
+                    gps->speed = tmpf1 * NM2KM;
+                    gps->track = tmpf2 / 180 * M_PI;
+
+                    // Set reference time for interpolation
+                    clock_gettime(CLOCK_MONOTONIC, &gps->reftime);
+                    gps->lat_offset = 0;
+                    gps->lon_offset = 0;
+
+                    pthread_mutex_unlock(&gps->mutex);
+                    continue;
+                }
+                goto error;
+            }
+
+            WARN("Unknown sentence: `%s`", tokens[0]);
+        }
+error:
+        WARN("Parse error");
     }
 
     ERROR("Broken pipe");
@@ -134,7 +262,7 @@ gps_t *gps_init(const char *device)
 
     struct termios tty;
     bzero(&tty, sizeof(tty));
-    tty.c_iflag = IGNCR;
+    tty.c_iflag = 0;
     tty.c_oflag = 0;
     tty.c_cflag = CS8 | CREAD | CLOCAL;
     tty.c_lflag = ICANON;

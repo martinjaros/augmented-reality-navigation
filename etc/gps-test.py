@@ -40,9 +40,15 @@ try:
             lon += sin(track) / cos(lat) * speed * period / 6371000
             alt += vario * period
 
-        fifo = open(FIFO, "w")
+        fifo = open(FIFO, "wb")
         try:
             while True:
+
+                def checksum(msg):
+                    cs = 0
+                    for char in msg[1:]:
+                        cs ^= ord(char);
+                    return msg + '*' + "{:02X}".format(cs)
 
                 # GGA
                 tick()
@@ -51,6 +57,7 @@ try:
                 msg = "$GPGGA," + strftime("%H%M%S", gmtime(prevtime))
                 msg += ",{:02.0f}{:07.4f},{:s},{:03.0f}{:07.4f},{:s}".format(latf[1], latf[0] * 60, lat > 0 and "N" or "S", lonf[1], lonf[0] * 60, lon > 0 and "E" or "W")
                 msg += ",1,08,0.0,{:.1f},M,0.0,M,,".format(alt)
+                msg = checksum(msg)
                 fifo.write(msg + "\r\n")
                 fifo.flush()
                 print msg
@@ -62,6 +69,7 @@ try:
                 msg = "$GPRMC," + strftime("%H%M%S", gmtime(prevtime))
                 msg += ",A,{:02.0f}{:07.4f},{:s},{:03.0f}{:07.4f},{:s}".format(latf[1], latf[0] * 60, lat > 0 and "N" or "S", lonf[1], lonf[0] * 60, lon > 0 and "E" or "W")
                 msg += ",{:.2f},{:.2f},".format(speed * 3.6/1.852, degrees(track)) + strftime("%d%m%y", gmtime(prevtime)) + ",0.0,E"
+                msg = checksum(msg)
                 fifo.write(msg + "\r\n")
                 fifo.flush()
                 print msg
@@ -77,6 +85,7 @@ try:
                 msg = "$GPRMB,A,0.0,L,," + wpname
                 msg += ",{:02.0f}{:07.4f},{:s},{:03.0f}{:07.4f},{:s}".format(wplatf[1], wplatf[0] * 60, wplat > 0 and "N" or "S", wplonf[1], wplonf[0] * 60, wplon > 0 and "E" or "W")
                 msg += ",{:04.1f},{:04.1f},0.0,V".format(dist < 999 and dist or 999, brg < 0 and abs(360 - brg) or abs(brg))
+                msg = checksum(msg)
                 fifo.write(msg + "\r\n")
                 fifo.flush()
                 print msg

@@ -30,7 +30,7 @@ struct imu_config
     /**
      * @brief Gyroscope offset
      */
-    int16_t gyro_offset[3];
+    float gyro_offset[3];
 
     /**
      * Gyroscope measurement weight (0 - 1)

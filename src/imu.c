@@ -48,9 +48,9 @@ struct __attribute__((__packed__)) buffer
 /* IIO buffer dequantization */
 inline void dequantize(const struct imu_config *config, struct buffer buf, float gyro[3], float mag[3], float acc[3])
 {
-    gyro[0] = (float)(SWAPI16(buf.gyro[0]) + config->gyro_offset[0]) * config->gyro_scale;
-    gyro[1] = (float)(SWAPI16(buf.gyro[1]) + config->gyro_offset[1]) * config->gyro_scale;
-    gyro[2] = (float)(SWAPI16(buf.gyro[2]) + config->gyro_offset[2]) * config->gyro_scale;
+    gyro[0] = ((float)SWAPI16(buf.gyro[0]) + config->gyro_offset[0]) * config->gyro_scale;
+    gyro[1] = ((float)SWAPI16(buf.gyro[1]) + config->gyro_offset[1]) * config->gyro_scale;
+    gyro[2] = ((float)SWAPI16(buf.gyro[2]) + config->gyro_offset[2]) * config->gyro_scale;
     mag[0] = (float)SWAPI16(buf.mag[0]);
     mag[1] = (float)SWAPI16(buf.mag[1]);
     mag[2] = (float)SWAPI16(buf.mag[2]);

@@ -30,17 +30,6 @@
 #include "gps.h"
 #include "imu.h"
 
-#define EARTH_RADIUS  6371000.0
-#define BUFFER_SIZE   64
-
-struct landmark_node
-{
-    double lat, lon;
-    float alt;
-    drawable_t *label;
-    struct landmark_node *next;
-};
-
 struct _application
 {
     imu_t *imu;
@@ -50,12 +39,34 @@ struct _application
     atlas_t *atlas1, *atlas2;
     drawable_t *image;
     hud_t *hud;
-    struct landmark_node *landmark;
 
     uint32_t video_width, video_height;
     float video_hfov, video_vfov;
     float visible_distance;
+    uint8_t label_color[4];
+
+    struct gps_config gps_config;
 };
+
+/* GPS API handler for label creation */
+void* create_label_handler(const char *text, void *userdata)
+{
+    DEBUG("create_label_handler()");
+    assert(text != 0);
+    assert(userdata != 0);
+
+    application_t *app = (application_t*)userdata;
+    drawable_t *label = graphics_label_create(app->graphics, app->atlas2, ANCHOR_CENTER_TOP);
+    graphics_label_set_text(label, text);
+    graphics_label_set_color(label, app->label_color);
+    return label;
+}
+
+/* GPS API handler for label deletion */
+void delete_label_handler(void *label)
+{
+    graphics_drawable_free((drawable_t*)label);
+}
 
 application_t *application_init(struct config *cfg)
 {
@@ -95,7 +106,11 @@ application_t *application_init(struct config *cfg)
     }
 
     // Initialize GPS
-    if(!(app->gps = gps_init(cfg->gps_device)))
+    app->gps_config.datafile = cfg->app_landmarks_file;
+    app->gps_config.userdata = app;
+    app->gps_config.create_label = create_label_handler;
+    app->gps_config.delete_label = delete_label_handler;
+    if(!(app->gps = gps_init(cfg->gps_device, &app->gps_config)))
     {
         ERROR("Cannot initialize GPS");
         goto error;
@@ -121,62 +136,13 @@ application_t *application_init(struct config *cfg)
         goto error;
     }
 
-    // Read landmarks
-    if(cfg->app_landmarks_file)
-    {
-        FILE *f = fopen(cfg->app_landmarks_file, "r");
-        if(!f)
-        {
-            WARN("Failed to open `%s`", cfg->app_landmarks_file);
-        }
-        else
-        {
-            struct landmark_node *node = NULL, *node_prev = NULL;
-
-            char buf[BUFFER_SIZE];
-            while(fgets(buf, BUFFER_SIZE, f))
-            {
-                char *str = buf;
-
-                // Skip empty lines and '#' comments
-                while(*str == ' ') str++;
-                if((*str == '\n') || (*str == '#')) continue;
-                str[strlen(str) - 1] = 0;
-                INFO("Parsing landmark line `%s`", str);
-
-                node = malloc(sizeof(struct landmark_node));
-
-                // Parse line
-                char name[32];
-                if(sscanf(str, "%lf, %lf, %f, %32[^\n]", &node->lat, &node->lon, &node->alt, name) != 4)
-                {
-                    WARN("Parse error");
-                    free(node);
-                    continue;
-                }
-
-                node->label = graphics_label_create(app->graphics, app->atlas2, ANCHOR_CENTER_BOTTOM);
-                graphics_label_set_color(node->label, cfg->graphics_font_color_2);
-                graphics_label_set_text(node->label, name);
-                node->next = NULL;
-                if(node_prev)
-                {
-                    node_prev = node_prev->next = node;
-                }
-                else
-                {
-                    app->landmark = node_prev = node;
-                }
-            }
-        }
-    }
-
     // Copy arguments
     app->video_width = cfg->video_width;
     app->video_height = cfg->video_height;
     app->video_hfov = cfg->video_hfov;
     app->video_vfov = cfg->video_vfov;
     app->visible_distance = cfg->app_landmark_vis_dist;
+    memcpy(app->label_color, cfg->graphics_font_color_2, 4);
 
     return app;
 
@@ -189,12 +155,6 @@ error:
     if(app->atlas1) graphics_atlas_free(app->atlas1);
     if(app->atlas2) graphics_atlas_free(app->atlas2);
     if(app->graphics) graphics_free(app->graphics);
-    while(app->landmark)
-    {
-        struct landmark_node *node = app->landmark;
-        app->landmark = node->next;
-        free(node);
-    }
 
     free(app);
     return NULL;
@@ -223,37 +183,30 @@ void application_mainloop(application_t *app)
         graphics_image_set_bitmap(app->image, data);
         graphics_draw(app->graphics, app->image, 0, 0, 1, 0);
 
-        // Draw landmarks
         imu_get_attitude(app->imu, att);
         gps_get_pos(app->gps, &lat, &lon, &alt);
-        struct landmark_node *node;
-        for(node = app->landmark; node; node = node->next)
+
+        // TODO
+        gps_inertial_update(app->gps, 0, 0, 0, 0.05);
+
+        // Draw landmarks
+        void *iterator;
+        float hangle, vangle, dist;
+        drawable_t *label = gps_get_projection_label(app->gps, &hangle, &vangle, &dist, att, &iterator);
+        while(iterator)
         {
-            double dlat = node->lat - lat;
-            double dlon = cos(lat) * (node->lon - lon);
-            float dalt = node->alt - alt;
-            float dist = sqrt(dlat*dlat + dlon*dlon) * EARTH_RADIUS;
-
-            // Calculate projection angle
-            float hangle_tmp = atan2(dlon, dlat) - att[2];
-            float vangle_tmp = atan(dalt / dist) + att[1];
-            float cosz = cos(-att[0]);
-            float sinz = sin(-att[0]);
-
-            // Reset to <-pi;pi> interval, rotate and clamp
-            hangle_tmp = hangle_tmp < M_PI ? hangle_tmp : hangle_tmp - 2 * M_PI;
-            hangle_tmp = hangle_tmp > -M_PI ? hangle_tmp : hangle_tmp + 2 * M_PI;
-            vangle_tmp = vangle_tmp < M_PI ? vangle_tmp : vangle_tmp - 2 * M_PI;
-            vangle_tmp = vangle_tmp > -M_PI ? vangle_tmp : vangle_tmp + 2 * M_PI;
-            float hangle = hangle_tmp * cosz - vangle_tmp * sinz;
-            float vangle = hangle_tmp * sinz - vangle_tmp * cosz;
-            if((hangle < app->video_hfov / -2.0) || (hangle > app->video_hfov / 2.0) || (vangle < app->video_vfov / -2.0) || (vangle > app->video_vfov / 2.0)) continue;
-            if(dist > app->visible_distance) continue;
-
-            INFO("Projecting landmark hangle = %f, vangle = %f, distance = %f", hangle, vangle, dist / 1000.0);
-            uint32_t x = (float)app->video_width  / 2 + (float)app->video_width  * hangle / app->video_hfov;
-            uint32_t y = (float)app->video_height / 2 + (float)app->video_height * vangle / app->video_vfov;
-            graphics_draw(app->graphics, node->label, x, y, 1, 0);
+            if((hangle > app->video_hfov / -2.0) &&
+               (hangle < app->video_hfov / 2.0)  &&
+               (vangle > app->video_vfov / -2.0) &&
+               (vangle < app->video_vfov / 2.0)  &&
+               (dist < app->visible_distance))
+            {
+                INFO("Projecting landmark hangle = %f, vangle = %f, distance = %f", hangle, vangle, dist / 1000.0);
+                uint32_t x = (float)app->video_width  / 2 + (float)app->video_width  * hangle / app->video_hfov;
+                uint32_t y = (float)app->video_height / 2 + (float)app->video_height * vangle / app->video_vfov;
+                graphics_draw(app->graphics, label, x, y, 1, 0);
+            }
+            label = gps_get_projection_label(app->gps, &hangle, &vangle, &dist, att, &iterator);
         }
 
         // Draw HUD overlay
@@ -283,11 +236,5 @@ void application_free(application_t *app)
     graphics_atlas_free(app->atlas1);
     graphics_atlas_free(app->atlas2);
     graphics_free(app->graphics);
-    while(app->landmark)
-    {
-        struct landmark_node *node = app->landmark;
-        app->landmark = node->next;
-        free(node);
-    }
     free(app);
 }

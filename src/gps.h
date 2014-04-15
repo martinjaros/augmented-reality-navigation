@@ -51,11 +51,38 @@
 typedef struct _gps gps_t;
 
 /**
+ * @brief GPS configuration structure
+ */
+struct gps_config
+{
+    /**
+     * @brief Landmarks data file name
+     */
+    const char *datafile;
+
+    /**
+     * @brief User specified data for `create_label()` callback
+     */
+    void *userdata;
+
+    /**
+     * @brief Callback function for synchronous creation of drawable label
+     */
+    void*(*create_label)(const char *text, void *userdata);
+
+    /**
+     * @brief Callback function for synchronous deletion of drawable label
+     */
+    void(*delete_label)(void *label);
+};
+
+/**
  * @brief Initializes GPS device
  * @param device Serial device name eg. "/dev/ttyS0"
+ * @param config Configuration structure
  * @return GPS object or NULL on error
  */
-gps_t *gps_init(const char *device);
+gps_t *gps_init(const char *device, const struct gps_config *config);
 
 /**
  * @brief Gets position information
@@ -82,6 +109,28 @@ void gps_get_track(gps_t *gps, float *speed, float *track);
  * @param[out] bearing Bearing to waypoint in radians
  */
 void gps_get_route(gps_t *gps, char *waypoint, float *distance, float *bearing);
+
+/**
+ * @brief Gets waypoint projection labels
+ * @param gps Object returned by `gps_init()`
+ * @param[out] hangle Horizontal projection angle in radians
+ * @param[out] vangle Vertical projection angle in radians
+ * @param[out] dist Distance to waypoint
+ * @param att Device attitude angles in radians
+ * @param iterator Node iterator
+ * @note Setting iterator to NULL will reset to the first node, after last node the iterator resets automatically
+ */
+void *gps_get_projection_label(gps_t *gps, float *hangle, float *vangle, float *dist, float att[3], void **iterator);
+
+/**
+ * @brief Filter GPS coordinates with inertial measurements
+ * @param gps Object returned by `gps_init()`
+ * @param dvx Differential speed, x axis
+ * @param dvy Differential speed, y axis
+ * @param dvz Differential speed, z axis
+ * @param dt Time delta, seconds
+ */
+void gps_inertial_update(gps_t *gps, float dvx, float dvy, float dvz, float dt);
 
 /**
  * @brief Releases resources

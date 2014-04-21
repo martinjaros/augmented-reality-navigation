@@ -22,12 +22,12 @@ try:
             while True:
 
                 curtime = time() - starttime
-                data = [0, 0, 32767, 0, 0, rate / radians(1000) * 32767, 32767 * cos(curtime * rate), 32767 * sin(curtime * rate), 0]
+                data = [0, 0, 4096, 0, 0, rate / radians(1000) * 32767, 32767 * cos(curtime * rate), 32767 * sin(curtime * rate), 0]
                 fifo.write(pack('>' + 'h' * 9, *data))
                 fifo.write(pack('Q', curtime * 1e9))
                 fifo.flush()
                 print "{:021.9f}".format(curtime)
-                sleep(.1)
+                sleep(.01)
 
         except IOError:
             fifo.close()

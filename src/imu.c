@@ -26,6 +26,8 @@
 #include "debug.h"
 #include "imu.h"
 
+#define EARTH_GRAVITY 9.81
+
 /* Byte-order swap */
 #define SWAPI16(x) (int16_t)((((uint16_t)x & 0x00ff) << 8) | (((uint16_t)x & 0xff00) >> 8))
 
@@ -33,6 +35,11 @@ struct _imu
 {
     int fd;
     float dcm[9];
+    uint64_t timestamp;
+
+    uint64_t reftime;
+    float accsum[3];
+
     pthread_t thread;
     pthread_mutex_t mutex;
     const struct imu_config *config;
@@ -54,9 +61,9 @@ inline void dequantize(const struct imu_config *config, struct buffer buf, float
     mag[0] = (float)SWAPI16(buf.mag[0]);
     mag[1] = (float)SWAPI16(buf.mag[1]);
     mag[2] = (float)SWAPI16(buf.mag[2]);
-    acc[0] = (float)SWAPI16(buf.acc[0]);
-    acc[1] = (float)SWAPI16(buf.acc[1]);
-    acc[2] = (float)SWAPI16(buf.acc[2]);
+    acc[0] = (float)SWAPI16(buf.acc[0]) * config->acc_scale * EARTH_GRAVITY;
+    acc[1] = (float)SWAPI16(buf.acc[1]) * config->acc_scale * EARTH_GRAVITY;
+    acc[2] = (float)SWAPI16(buf.acc[2]) * config->acc_scale * EARTH_GRAVITY;
 }
 
 /* Vector multiply, res = a x b */
@@ -80,7 +87,6 @@ static void *worker(void *arg)
 {
     INFO("Thread started");
     float gyro[3], mag[3], acc[3];
-    uint64_t timestamp;
     struct buffer buf;
     imu_t *imu = (imu_t*)arg;
 
@@ -97,7 +103,7 @@ static void *worker(void *arg)
     vect_norm(acc, &imu->dcm[6]);
     vect_mult(&imu->dcm[6], mag, &imu->dcm[3]);
     vect_mult(&imu->dcm[3], &imu->dcm[6], &imu->dcm[0]);
-    timestamp = buf.timestamp;
+    imu->reftime = imu->timestamp = buf.timestamp;
     pthread_mutex_unlock(&imu->mutex);
 
     while(read(imu->fd, &buf, sizeof(struct buffer)) == sizeof(struct buffer))
@@ -107,12 +113,17 @@ static void *worker(void *arg)
         INFO("Gyro [%f, %f, %f], Mag [%f, %f, %f], Acc [%f, %f, %f]",
              gyro[0], gyro[1], gyro[2], mag[0], mag[1], mag[2], acc[0], acc[1], acc[2]);
 
+        // Rotate to global frame
+        imu->accsum[0] += imu->dcm[0] * acc[0] + imu->dcm[1] * acc[1] + imu->dcm[2] * (acc[2] - EARTH_GRAVITY);
+        imu->accsum[1] += imu->dcm[3] * acc[0] + imu->dcm[4] * acc[1] + imu->dcm[5] * (acc[2] - EARTH_GRAVITY);
+        imu->accsum[2] += imu->dcm[6] * acc[0] + imu->dcm[7] * acc[1] + imu->dcm[8] * (acc[2] - EARTH_GRAVITY);
+
         // Integrate
-        float diff = (float)(buf.timestamp - timestamp) / 1e9;
+        float diff = (float)(buf.timestamp - imu->timestamp) / 1e9;
         gyro[0] *= diff;
         gyro[1] *= diff;
         gyro[2] *= diff;
-        timestamp = buf.timestamp;
+        imu->timestamp = buf.timestamp;
         imu->dcm[0] = imu->dcm[0] + imu->dcm[3] * (gyro[0] * gyro[1] + gyro[2]) + imu->dcm[6] * (gyro[0] * gyro[2] - gyro[1]);
         imu->dcm[1] = imu->dcm[1] + imu->dcm[4] * (gyro[0] * gyro[1] + gyro[2]) + imu->dcm[7] * (gyro[0] * gyro[2] - gyro[1]);
         imu->dcm[2] = imu->dcm[2] + imu->dcm[5] * (gyro[0] * gyro[1] + gyro[2]) + imu->dcm[8] * (gyro[0] * gyro[2] - gyro[1]);
@@ -165,6 +176,10 @@ imu_t *imu_init(const char *device, const struct imu_config *config)
     imu->dcm[6] = 0;
     imu->dcm[7] = 0;
     imu->dcm[8] = 1;
+    imu->accsum[0] = 0;
+    imu->accsum[1] = 0;
+    imu->accsum[2] = 0;
+    imu->reftime = 0;
 
     // Open device
     if((imu->fd = open(device, O_RDONLY | O_NOCTTY)) == -1)
@@ -186,7 +201,7 @@ imu_t *imu_init(const char *device, const struct imu_config *config)
     return imu;
 }
 
-void imu_get_attitude(imu_t *imu, float *attitude)
+void imu_get_attitude(imu_t *imu, float attitude[3])
 {
     DEBUG("imu_get_attitude()");
     assert(imu != 0);
@@ -196,6 +211,22 @@ void imu_get_attitude(imu_t *imu, float *attitude)
     attitude[0] = -atan2f(imu->dcm[7], imu->dcm[8]);
     attitude[1] = asinf(imu->dcm[6]);
     attitude[2] = -atan2(imu->dcm[3], imu->dcm[0]);
+    pthread_mutex_unlock(&imu->mutex);
+}
+
+void imu_get_acceleration(imu_t *imu, float accsum[3], float *difftime)
+{
+    DEBUG("imu_get_acceleration()");
+    assert(imu != 0);
+    assert(accsum != 0);
+    assert(difftime != 0);
+
+    pthread_mutex_lock(&imu->mutex);
+    accsum[0] = imu->accsum[0];
+    accsum[1] = imu->accsum[1];
+    accsum[2] = imu->accsum[2];
+    *difftime = (float)(imu->timestamp - imu->reftime) / 1e9;
+    imu->reftime = imu->timestamp;
     pthread_mutex_unlock(&imu->mutex);
 }
 

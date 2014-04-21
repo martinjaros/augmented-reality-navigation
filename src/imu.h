@@ -74,6 +74,14 @@ imu_t *imu_init(const char *device, const struct imu_config *config);
 void imu_get_attitude(imu_t *imu, float attitude[3]);
 
 /**
+ * @brief Gets integrated acceleration values rotated to global reference frame
+ * @param imu Object as returned by `imu_init()`
+ * @param[out] accsum Acceleration values in I, J and K axis
+ * @param[out] difftime Time in seconds elapsed after the previous call
+ */
+void imu_get_acceleration(imu_t *imu, float accsum[3], float *difftime);
+
+/**
  * @brief Releases resources
  * @param imu Object as returned by `imu_init()`
  */

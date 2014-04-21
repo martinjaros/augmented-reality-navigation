@@ -72,6 +72,7 @@ int main(int argc, char *argv[])
             .gyro_offset = { 0, 0, 0 },
             .gyro_weight = .8,
             .gyro_scale = 0.00053264847315724, // 1000 deg/s
+            .acc_scale = 0.000244140625, // 8g
         },
 
         .gps_device = "/dev/null"

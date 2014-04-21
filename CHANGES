@@ -1,3 +1,4 @@
+ * inertial updates
  * landmark handling moved to gps module
  * changed gyro offset config to floating point
  * NMEA 0183 checksum calculation

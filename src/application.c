@@ -46,6 +46,7 @@ struct _application
     uint8_t label_color[4];
 
     struct gps_config gps_config;
+    struct imu_config imu_config;
 };
 
 /* GPS API handler for label creation */
@@ -117,7 +118,8 @@ application_t *application_init(struct config *cfg)
     }
 
     // Initialize IMU
-    if(!(app->imu = imu_init(cfg->imu_device, &cfg->imu_conf)))
+    memcpy(&app->imu_config, &cfg->imu_conf, sizeof(struct imu_config));
+    if(!(app->imu = imu_init(cfg->imu_device, &app->imu_config)))
     {
         ERROR("Cannot initialize IMU");
         goto error;
@@ -167,9 +169,11 @@ void application_mainloop(application_t *app)
 
     void *data;
     size_t length;
-    double lat, lon;
     float att[3], alt, spd, trk, brg, dst;
     char wpt[32];
+
+    float accsum[3];
+    float difftime;
 
     while(1)
     {
@@ -184,10 +188,10 @@ void application_mainloop(application_t *app)
         graphics_draw(app->graphics, app->image, 0, 0, 1, 0);
 
         imu_get_attitude(app->imu, att);
-        gps_get_pos(app->gps, &lat, &lon, &alt);
+        gps_get_pos(app->gps, NULL, NULL, &alt);
 
-        // TODO
-        gps_inertial_update(app->gps, 0, 0, 0, 0.05);
+        imu_get_acceleration(app->imu, accsum, &difftime);
+        gps_inertial_update(app->gps, accsum[0], accsum[1], accsum[2], difftime);
 
         // Draw landmarks
         void *iterator;

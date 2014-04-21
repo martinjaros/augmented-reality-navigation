@@ -41,6 +41,11 @@ struct imu_config
      * @brief Gyroscope measurement scale
      */
     float gyro_scale;
+
+    /**
+     * @brief Accelerometer measurement scale
+     */
+    float acc_scale;
 };
 
 #endif /* IMU_CONFIG_H */

@@ -404,15 +404,13 @@ void gps_inertial_update(gps_t *gps, float dvx, float dvy, float dvz, float dt)
     DEBUG("gps_get_projections()");
     assert(gps != 0);
 
+    INFO("Inertial update dvx = %f, dvy = %f, dvz = %f, dt = %f", dvx, dvy, dvz, dt);
+
     pthread_mutex_lock(&gps->mutex);
     float delta = gps->speed * KMH2MS * dt / EARTH_RADIUS;
     double tmp = gps->latitude += cosf(gps->track) * delta;
     gps->longitude += sinf(gps->track) * delta / cosf(tmp);
-    gps->altitude += dvz;
-
-    // TODO
-    (void)dvx; // convert do deg, add to longitude
-    (void)dvy; // convert do deg, add to latitude
+    gps->altitude += dvz * dt;
 
     pthread_mutex_unlock(&gps->mutex);
 }

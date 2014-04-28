@@ -29,6 +29,8 @@
 static unsigned long window_create(uint32_t width, uint32_t height)
 {
     xcb_connection_t *conn = xcb_connect(NULL, NULL);
+    if(xcb_connection_has_error(conn)) { ERROR("Cannot connect to display"); return 0; }
+
     xcb_screen_t *screen = xcb_setup_roots_iterator(xcb_get_setup(conn)).data;
     xcb_window_t window = xcb_generate_id(conn);
 
@@ -146,6 +148,8 @@ int main(int argc, char *argv[])
                     free(interlace);
                 }
             }
+
+            fclose(f);
         }
     }
 

@@ -18,6 +18,7 @@ Kernel
  * iio
 
 Libraries
+ * turbojpeg
  * freetype2
  * EGL
  * GLESv2

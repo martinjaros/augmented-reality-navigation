@@ -1,3 +1,5 @@
+ * jpeg support
+ * video rescaling
  * inertial updates
  * landmark handling moved to gps module
  * changed gyro offset config to floating point

@@ -44,6 +44,16 @@ struct config
     unsigned long app_window_id;
 
     /**
+     * @brief Window width in pixels
+     */
+    uint32_t window_width;
+
+    /**
+     * @brief Window height in pixels
+     */
+    uint32_t window_height;
+
+    /**
      * @brief Landmark visible distance in meters
      */
     float app_landmark_vis_dist;

@@ -40,7 +40,7 @@ struct _application
     drawable_t *image;
     hud_t *hud;
 
-    uint32_t video_width, video_height;
+    uint32_t video_width, video_height, window_width, window_height;
     float video_hfov, video_vfov;
     float visible_distance;
     uint8_t label_color[4];
@@ -93,7 +93,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Create image
-    if(!(app->image = graphics_image_create(app->graphics, cfg->video_width, cfg->video_height, ANCHOR_LEFT_TOP)))
+    if(!(app->image = graphics_image_create(app->graphics, cfg->video_width, cfg->video_height, cfg->video_format, ANCHOR_CENTER)))
     {
         ERROR("Cannot create image");
         goto error;
@@ -125,12 +125,6 @@ application_t *application_init(struct config *cfg)
         goto error;
     }
 
-    if(strcmp(cfg->video_format, "RGB4"))
-    {
-        ERROR("Video format not supported");
-        goto error;
-    }
-
     // Open video
     if(!(app->video = video_open(cfg->video_device, cfg->video_width, cfg->video_height, cfg->video_format, cfg->video_interlace)))
     {
@@ -141,6 +135,8 @@ application_t *application_init(struct config *cfg)
     // Copy arguments
     app->video_width = cfg->video_width;
     app->video_height = cfg->video_height;
+    app->window_width = cfg->window_width;
+    app->window_height = cfg->window_height;
     app->video_hfov = cfg->video_hfov;
     app->video_vfov = cfg->video_vfov;
     app->visible_distance = cfg->app_landmark_vis_dist;
@@ -183,9 +179,10 @@ void application_mainloop(application_t *app)
             ERROR("Cannot read from video device");
             break;
         }
-        assert(length == app->video_width * app->video_height * 4);
-        graphics_image_set_bitmap(app->image, data);
-        graphics_draw(app->graphics, app->image, 0, 0, 1, 0);
+        graphics_image_set_bitmap(app->image, data, length);
+        graphics_draw(app->graphics, app->image, app->window_width / 2, app->window_height / 2,
+                      (float)app->window_width / (float)app->window_height < (float)app->video_width / (float)app->video_height ?
+                      (float)app->window_height / (float)app->video_height : (float)app->window_width / (float)app->video_width, 0);
 
         imu_get_attitude(app->imu, att);
         gps_get_pos(app->gps, NULL, NULL, &alt);
@@ -206,8 +203,8 @@ void application_mainloop(application_t *app)
                (dist < app->visible_distance))
             {
                 INFO("Projecting landmark hangle = %f, vangle = %f, distance = %f", hangle, vangle, dist / 1000.0);
-                uint32_t x = (float)app->video_width  / 2 + (float)app->video_width  * hangle / app->video_hfov;
-                uint32_t y = (float)app->video_height / 2 + (float)app->video_height * vangle / app->video_vfov;
+                uint32_t x = (float)app->window_width  / 2 + (float)app->window_width  * hangle / app->video_hfov;
+                uint32_t y = (float)app->window_height / 2 + (float)app->window_height * vangle / app->video_vfov;
                 graphics_draw(app->graphics, label, x, y, 1, 0);
             }
             label = gps_get_projection_label(app->gps, &hangle, &vangle, &dist, att, &iterator);

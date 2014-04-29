@@ -16,7 +16,10 @@
  */
 
 #include <stdlib.h>
+#include <string.h>
 #include <assert.h>
+
+#include <turbojpeg.h>
 
 #include "debug.h"
 #include "graphics.h"
@@ -28,6 +31,8 @@ struct _drawable_image
 {
     struct _drawable d;
     GLuint width, height;
+    enum { FORMAT_RGBA, FORMAT_MJPEG } format;
+    union { tjhandle jpeg; } decoder;
 };
 
 void graphics_draw(graphics_t *g, drawable_t *d, int x, int y, float scale, float rotation)
@@ -59,13 +64,31 @@ void graphics_draw(graphics_t *g, drawable_t *d, int x, int y, float scale, floa
     glDrawArrays(d->mode, 0, d->num);
 }
 
-drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, enum anchor_types anchor)
+drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, const char format[4], enum anchor_types anchor)
 {
     DEBUG("graphics_image_create()");
     assert(g != 0);
 
     struct _drawable_image *image = malloc(sizeof(struct _drawable_image));
     assert(image != 0);
+
+    if(strcmp(format, "RGB4") == 0)
+    {
+        image->format = FORMAT_RGBA;
+    }
+    else if(strcmp(format, "MJPG") == 0)
+    {
+        INFO("Initializing JPEG decoder");
+        image->format = FORMAT_MJPEG;
+        image->decoder.jpeg = tjInitDecompress();
+        assert(image->decoder.jpeg != 0);
+    }
+    else
+    {
+        WARN("No convertor for `%4c` format", format);
+        free(image);
+        return NULL;
+    }
 
     image->d.type = DRAWABLE_IMAGE;
     image->d.mask[0] = 1;
@@ -138,7 +161,7 @@ drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height
     return (drawable_t*)image;
 }
 
-void graphics_image_set_bitmap(drawable_t *d, const void *buffer)
+void graphics_image_set_bitmap(drawable_t *d, void *buffer, uint32_t len)
 {
     DEBUG("graphics_image_set_bitmap()");
     assert(d != 0);
@@ -146,6 +169,23 @@ void graphics_image_set_bitmap(drawable_t *d, const void *buffer)
     assert(d->type == DRAWABLE_IMAGE);
 
     struct _drawable_image *image = (struct _drawable_image*)d;
+    uint8_t dstbuf[image->width * image->height * 4];
+    switch(image->format)
+    {
+        case FORMAT_MJPEG:
+            if(tjDecompress2(image->decoder.jpeg, buffer, len, dstbuf, image->width, image->width * 4, image->height,
+                             TJPF_RGBX, TJFLAG_FASTDCT | TJFLAG_FASTUPSAMPLE) == 0)
+            {
+                buffer = dstbuf;
+            }
+            else WARN("JPEG decompression failed");
+            break;
+
+        case FORMAT_RGBA:
+        default:
+            break;
+    }
+
     glBindTexture(GL_TEXTURE_2D, image->d.tex);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height, 0, GL_RGBA, GL_UNSIGNED_BYTE, buffer);
     glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -162,5 +202,10 @@ void graphics_drawable_free(drawable_t *d)
 
     glDeleteBuffers(1, &d->vbo);
     if(d->type != DRAWABLE_LABEL) glDeleteTextures(1, &d->tex);
+    if(d->type == DRAWABLE_IMAGE)
+    {
+        struct _drawable_image *image = (struct _drawable_image*)d;
+        if(image->format == FORMAT_MJPEG) tjDestroy(image->decoder.jpeg);
+    }
     free(d);
 }

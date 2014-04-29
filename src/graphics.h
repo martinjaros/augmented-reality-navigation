@@ -132,10 +132,11 @@ drawable_t *graphics_label_create(graphics_t *g, atlas_t *atlas, enum anchor_typ
  * @param g Internal graphics object as returned by `graphics_init()`
  * @param width Texture width in pixels
  * @param height Texture height in pixels
+ * @param format Image source format in fourcc
  * @param anchor Anchor used for drawing
  * @return Drawable object
  */
-drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, enum anchor_types anchor);
+drawable_t *graphics_image_create(graphics_t *g, uint32_t width, uint32_t height, const char format[4], enum anchor_types anchor);
 
 /**
  * @brief Creates HUD overlay
@@ -186,8 +187,9 @@ void graphics_label_set_color(drawable_t *label, const uint8_t color[4]);
  * @brief Updates image bitmap
  * @param image Image object to update
  * @param buffer Pixel data buffer in RGBx format (width * height * 32)
+ * @param len Buffer length in bytes
  */
-void graphics_image_set_bitmap(drawable_t *image, const void *buffer);
+void graphics_image_set_bitmap(drawable_t *image, void *buffer, uint32_t len);
 
 /**
  * @brief Releases resources of the specified object

@@ -56,7 +56,9 @@ int main(int argc, char *argv[])
 
         .video_device = "/dev/video0",
         .video_width = 800,
+        .window_width = 800,
         .video_height = 600,
+        .window_height = 600,
         .video_format = "RGB4",
         .video_interlace = 0,
         .video_hfov = 1.0471, // 60 deg
@@ -107,6 +109,8 @@ int main(int argc, char *argv[])
                 char *interlace = NULL;
                 if(sscanf(str, "app_landmarks_file = %ms", &cfg.app_landmarks_file) != 1)
                 if(sscanf(str, "app_landmark_vis_dist = %f", &cfg.app_landmark_vis_dist) != 1)
+                if(sscanf(str, "window_width = %u", &cfg.window_width) != 1)
+                if(sscanf(str, "window_height = %u", &cfg.window_height) != 1)
                 if(sscanf(str, "video_device = %ms", &cfg.video_device) != 1)
                 if(sscanf(str, "video_width = %u", &cfg.video_width) != 1)
                 if(sscanf(str, "video_height = %u", &cfg.video_height) != 1)
@@ -154,7 +158,7 @@ int main(int argc, char *argv[])
     }
 
     // Create window
-    cfg.app_window_id = window_create(cfg.video_width, cfg.video_height);
+    cfg.app_window_id = window_create(cfg.window_width, cfg.window_height);
 
     // Start application
     application_t *app = application_init(&cfg);

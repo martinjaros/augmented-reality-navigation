@@ -1,7 +1,7 @@
 SOURCES = $(wildcard src/*.c)
 CFLAGS = -Wall
 INCLUDES = -I/usr/include/freetype2
-LIBS = -lm -lpthread -lfreetype -lturbojpeg -lGLESv2 -lEGL
+LIBS = -lm -lpthread -lfreetype -lturbojpeg -lpng -lGLESv2 -lEGL
 
 ifndef CC
 	CC = gcc

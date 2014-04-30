@@ -25,6 +25,7 @@
 #include <stdint.h>
 
 #include "imu-config.h"
+#include "gps-config.h"
 
 /**
  * @brief Application configuration structure
@@ -32,11 +33,6 @@
 struct config
 {
     /************* APPLICATION *************/
-
-    /**
-     * @brief Landmark database file name
-     */
-    char *app_landmarks_file;
 
     /**
      * @brief Native window id
@@ -144,6 +140,11 @@ struct config
      * @brief Device file name
      */
     char *gps_device;
+
+    /**
+     * @brief GPS configuration
+     */
+    struct gps_config gps_conf;
 };
 
 /**

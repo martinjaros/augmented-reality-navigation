@@ -107,7 +107,7 @@ int main(int argc, char *argv[])
 
                 // Parse line
                 char *interlace = NULL;
-                if(sscanf(str, "app_landmarks_file = %ms", &cfg.app_landmarks_file) != 1)
+                if(sscanf(str, "app_landmarks_file = %ms", &cfg.gps_conf.datafile) != 1)
                 if(sscanf(str, "app_landmark_vis_dist = %f", &cfg.app_landmark_vis_dist) != 1)
                 if(sscanf(str, "window_width = %u", &cfg.window_width) != 1)
                 if(sscanf(str, "window_height = %u", &cfg.window_height) != 1)
@@ -130,6 +130,12 @@ int main(int argc, char *argv[])
                 if(sscanf(str, "imu_gyro_weight = %f", &cfg.imu_conf.gyro_weight) != 1)
                 if(sscanf(str, "imu_gyro_scale = %f", &cfg.imu_conf.gyro_scale) != 1)
                 if(sscanf(str, "gps_device = %ms", &cfg.gps_device) != 1)
+                if(sscanf(str, "gps_dem_file = %ms", &cfg.gps_conf.dem_file) != 1)
+                if(sscanf(str, "gps_dem_left = %lf", &cfg.gps_conf.dem_left) != 1)
+                if(sscanf(str, "gps_dem_top = %lf", &cfg.gps_conf.dem_top) != 1)
+                if(sscanf(str, "gps_dem_right = %lf", &cfg.gps_conf.dem_right) != 1)
+                if(sscanf(str, "gps_dem_bottom = %lf", &cfg.gps_conf.dem_bottom) != 1)
+                if(sscanf(str, "gps_dem_pixel_scale = %f", &cfg.gps_conf.dem_pixel_scale) != 1)
                 {
                     WARN("Unknown parameter or parse error");
                     continue;

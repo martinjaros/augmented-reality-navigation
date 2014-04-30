@@ -107,7 +107,7 @@ application_t *application_init(struct config *cfg)
     }
 
     // Initialize GPS
-    app->gps_config.datafile = cfg->app_landmarks_file;
+    memcpy(&app->gps_config, &cfg->gps_conf, sizeof(struct gps_config));
     app->gps_config.userdata = app;
     app->gps_config.create_label = create_label_handler;
     app->gps_config.delete_label = delete_label_handler;

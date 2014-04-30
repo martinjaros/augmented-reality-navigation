@@ -28,6 +28,7 @@
 
 #include "debug.h"
 #include "gps.h"
+#include "gps-util.h"
 
 /* Earth radius in meters */
 #define EARTH_RADIUS    6371000.0
@@ -44,15 +45,6 @@
 /* NMEA 0183 maximum number of tokens */
 #define MAX_TOKENS      32
 
-struct waypoint_node
-{
-    double lat, lon;
-    float alt;
-    char name[32];
-    void *label;
-    struct waypoint_node *next;
-};
-
 struct _gps
 {
     int fd;
@@ -62,6 +54,7 @@ struct _gps
     float altitude, speed, track, bearing, distance;
     char waypoint[32];
     struct waypoint_node *waypoint_list;
+    struct dem *dem;
     const struct gps_config *config;
 };
 
@@ -227,6 +220,51 @@ static void *worker(void *arg)
                 goto error;
             }
 
+            if(strcmp(tokens[0], "GPWPL") == 0)
+            {
+                INFO("Received GPWPL sentence");
+
+                // 1,2 - Latitude
+                if(sscanf(tokens[1], "%2lf%lf", &lat_deg, &lat_min) == 2)
+                if((lat_dir = *tokens[2] == 'N' ? 1 : *tokens[2] == 'S' ? -1 : 0) != 0)
+                // 3,4 - Longitude
+                if(sscanf(tokens[3], "%3lf%lf", &lon_deg, &lon_min) == 2)
+                if((lon_dir = *tokens[4] == 'E' ? 1 : *tokens[4] == 'W' ? -1 : 0) != 0)
+                // 5 - Waypoint name
+                {
+                    pthread_mutex_lock(&gps->mutex);
+                    struct waypoint_node *node = gps->waypoint_list;
+                    while(node)
+                    {
+                        if(strcmp(node->name, tokens[5]) == 0)
+                        {
+                            // Update existing node
+                            node->lat = lat_dir * (lat_deg + lat_min / 60.0) / 180.0 * M_PI;
+                            node->lon = lon_dir * (lon_deg + lon_min / 60.0) / 180.0 * M_PI;
+                            node->alt = gps->dem ? gps_util_dem_get_alt(gps->dem, node->lat, node->lon) : node->alt;
+                            goto finish_wpl;
+                        }
+                        node = node->next;
+                    }
+
+                    // Create new node
+                    node = malloc(sizeof(struct waypoint_node));
+                    node->lat = lat_dir * (lat_deg + lat_min / 60.0) / 180.0 * M_PI;
+                    node->lon = lon_dir * (lon_deg + lon_min / 60.0) / 180.0 * M_PI;
+                    node->alt = gps->dem ? gps_util_dem_get_alt(gps->dem, node->lat, node->lon) : 0;
+                    node->label = NULL;
+                    strncpy(node->name, tokens[5], sizeof(node->name));
+                    node->next = gps->waypoint_list;
+                    gps->waypoint_list = node;
+
+finish_wpl:
+                    pthread_mutex_unlock(&gps->mutex);
+                    continue;
+                }
+
+                goto error;
+            }
+
             WARN("Unknown sentence: `%s`", tokens[0]);
         }
 error:
@@ -235,6 +273,26 @@ error:
 
     ERROR("Broken pipe");
     return NULL;
+}
+
+static void gps_internal_free(gps_t *gps)
+{
+    close(gps->fd);
+    while(gps->waypoint_list)
+    {
+        struct waypoint_node *node = gps->waypoint_list;
+        gps->waypoint_list = node->next;
+        if(node->label) gps->config->delete_label(node->label);
+        free(node);
+    }
+    if(gps->dem)
+    {
+        int i;
+        for(i = 0; i < gps->dem->height; i++) free(gps->dem->lines[i]);
+        free(gps->dem->lines);
+        free(gps->dem);
+    }
+    free(gps);
 }
 
 gps_t *gps_init(const char *device, const struct gps_config *config)
@@ -267,62 +325,15 @@ gps_t *gps_init(const char *device, const struct gps_config *config)
         WARN("Failed to set attributes");
     }
 
-    // Load landmarks
     gps->config = config;
-    if(config->datafile)
-    {
-        FILE *fp = fopen(config->datafile, "r");
-        if(!fp)
-        {
-            WARN("Failed to open `%s`", config->datafile);
-        }
-        else
-        {
-            struct waypoint_node *node = NULL, *node_prev = NULL;
-
-            char buf[BUFFER_SIZE];
-            while(fgets(buf, BUFFER_SIZE, fp))
-            {
-                char *str = buf;
-
-                // Skip empty lines and '#' comments
-                while(*str == ' ') str++;
-                if((*str == '\n') || (*str == '#')) continue;
-                str[strlen(str) - 1] = 0;
-                INFO("Parsing landmark line `%s`", str);
-
-                node = malloc(sizeof(struct waypoint_node));
-
-                // Parse line
-                if(sscanf(str, "%lf, %lf, %f, %32[^\n]", &node->lat, &node->lon, &node->alt, node->name) != 4)
-                {
-                    WARN("Parse error");
-                    free(node);
-                    continue;
-                }
-
-                node->label = NULL;
-                node->next = NULL;
-                if(node_prev)
-                {
-                    node_prev = node_prev->next = node;
-                }
-                else
-                {
-                    gps->waypoint_list = node_prev = node;
-                }
-            }
-
-            fclose(fp);
-        }
-    }
+    if(config->datafile) gps->waypoint_list = gps_util_load_datafile(config->datafile);
+    if(config->dem_file) gps->dem = gps_util_load_demfile(config->dem_file, config->dem_left, config->dem_top, config->dem_right, config->dem_bottom, config->dem_pixel_scale);
 
     // Start worker thread
     if(pthread_mutex_init(&gps->mutex, NULL) || pthread_create(&gps->thread, NULL, worker, gps))
     {
         WARN("Failed to create thread");
-        close(gps->fd);
-        free(gps);
+        gps_internal_free(gps);
         return NULL;
     }
 
@@ -373,6 +384,12 @@ void *gps_get_projection_label(gps_t *gps, float *hangle, float *vangle, float *
 
     pthread_mutex_lock(&gps->mutex);
     struct waypoint_node *node = *iterator ? (struct waypoint_node*)*iterator : gps->waypoint_list;
+    if(node == NULL)
+    {
+        *iterator = NULL;
+        return NULL;
+    }
+
     *iterator = node->next;
     double dlat = node->lat - gps->latitude;
     double dlon = cos(gps->latitude) * (node->lon - gps->longitude);
@@ -423,13 +440,5 @@ void gps_free(gps_t *gps)
     pthread_cancel(gps->thread);
     pthread_join(gps->thread, NULL);
     pthread_mutex_destroy(&gps->mutex);
-    close(gps->fd);
-    while(gps->waypoint_list)
-    {
-        struct waypoint_node *node = gps->waypoint_list;
-        gps->waypoint_list = node->next;
-        if(node->label) gps->config->delete_label(node->label);
-        free(node);
-    }
-    free(gps);
+    gps_internal_free(gps);
 }

@@ -45,36 +45,12 @@
 #ifndef GPS_H
 #define GPS_H
 
+#include "gps-config.h"
+
 /**
  * @brief Internal object
  */
 typedef struct _gps gps_t;
-
-/**
- * @brief GPS configuration structure
- */
-struct gps_config
-{
-    /**
-     * @brief Landmarks data file name
-     */
-    const char *datafile;
-
-    /**
-     * @brief User specified data for `create_label()` callback
-     */
-    void *userdata;
-
-    /**
-     * @brief Callback function for synchronous creation of drawable label
-     */
-    void*(*create_label)(const char *text, void *userdata);
-
-    /**
-     * @brief Callback function for synchronous deletion of drawable label
-     */
-    void(*delete_label)(void *label);
-};
 
 /**
  * @brief Initializes GPS device

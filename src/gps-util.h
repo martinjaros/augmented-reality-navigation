@@ -41,7 +41,7 @@ struct waypoint_node
     struct waypoint_node *next;
 };
 
-struct waypoint_node *gps_util_load_datafile(const char *filename);
+struct waypoint_node *gps_util_load_datafile(const char *filename, struct dem *dem);
 
 struct dem *gps_util_load_demfile(const char *filename, double left, double top, double right, double bottom, float scale);
 

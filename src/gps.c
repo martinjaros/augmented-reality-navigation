@@ -326,8 +326,8 @@ gps_t *gps_init(const char *device, const struct gps_config *config)
     }
 
     gps->config = config;
-    if(config->datafile) gps->waypoint_list = gps_util_load_datafile(config->datafile);
     if(config->dem_file) gps->dem = gps_util_load_demfile(config->dem_file, config->dem_left, config->dem_top, config->dem_right, config->dem_bottom, config->dem_pixel_scale);
+    if(config->datafile) gps->waypoint_list = gps_util_load_datafile(config->datafile, gps->dem);
 
     // Start worker thread
     if(pthread_mutex_init(&gps->mutex, NULL) || pthread_create(&gps->thread, NULL, worker, gps))
@@ -422,13 +422,18 @@ void gps_inertial_update(gps_t *gps, float dvx, float dvy, float dvz, float dt)
     assert(gps != 0);
 
     INFO("Inertial update dvx = %f, dvy = %f, dvz = %f, dt = %f", dvx, dvy, dvz, dt);
+    dvx *= dt / KMH2MS;
+    dvy *= dt / KMH2MS;
+    dvx += cosf(gps->track) * gps->speed;
+    dvy += sinf(gps->track) * gps->speed;
+    gps->track = atan2f(dvy, dvx);
+    gps->speed = sqrt(dvx * dvx + dvy * dvy);
 
     pthread_mutex_lock(&gps->mutex);
     float delta = gps->speed * KMH2MS * dt / EARTH_RADIUS;
     double tmp = gps->latitude += cosf(gps->track) * delta;
     gps->longitude += sinf(gps->track) * delta / cosf(tmp);
     gps->altitude += dvz * dt;
-
     pthread_mutex_unlock(&gps->mutex);
 }
 

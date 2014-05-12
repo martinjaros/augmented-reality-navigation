@@ -14,7 +14,7 @@ try:
     while True:
 
         # Turn rate (rad/s)
-        rate = radians(.1)
+        rate = 0 #radians(.1)
 
         fifo = open(FIFO, "wb")
         starttime = time()
@@ -22,7 +22,8 @@ try:
             while True:
 
                 curtime = time() - starttime
-                data = [0, 0, 4096, 0, 0, rate / radians(1000) * 32767, 32767 * cos(curtime * rate), 32767 * sin(curtime * rate), 0]
+                #data = [0, 0, 4096, 0, 0, rate / radians(1000) * 32767, 32767 * cos(curtime * rate), 32767 * sin(curtime * rate), 0]
+                data = [0.34202014332567*4096,0.46984631039295*4096,0.81379768134937*4096,0,0,0,-0.16317591116653*32767,0.88256411925939*32767,-0.44096961052988*32767]
                 fifo.write(pack('>' + 'h' * 9, *data))
                 fifo.write(pack('Q', curtime * 1e9))
                 fifo.flush()

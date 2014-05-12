@@ -114,9 +114,9 @@ static void *worker(void *arg)
              gyro[0], gyro[1], gyro[2], mag[0], mag[1], mag[2], acc[0], acc[1], acc[2]);
 
         // Rotate to global frame
-        imu->accsum[0] += imu->dcm[0] * acc[0] + imu->dcm[1] * acc[1] + imu->dcm[2] * (acc[2] - EARTH_GRAVITY);
-        imu->accsum[1] += imu->dcm[3] * acc[0] + imu->dcm[4] * acc[1] + imu->dcm[5] * (acc[2] - EARTH_GRAVITY);
-        imu->accsum[2] += imu->dcm[6] * acc[0] + imu->dcm[7] * acc[1] + imu->dcm[8] * (acc[2] - EARTH_GRAVITY);
+        imu->accsum[0] += imu->dcm[0] * acc[0] + imu->dcm[1] * acc[1] + imu->dcm[2] * acc[2];
+        imu->accsum[1] += imu->dcm[3] * acc[0] + imu->dcm[4] * acc[1] + imu->dcm[5] * acc[2];
+        imu->accsum[2] += imu->dcm[6] * acc[0] + imu->dcm[7] * acc[1] + imu->dcm[8] * acc[2] - EARTH_GRAVITY;
 
         // Integrate
         float diff = (float)(buf.timestamp - imu->timestamp) / 1e9;
@@ -225,6 +225,9 @@ void imu_get_acceleration(imu_t *imu, float accsum[3], float *difftime)
     accsum[0] = imu->accsum[0];
     accsum[1] = imu->accsum[1];
     accsum[2] = imu->accsum[2];
+    imu->accsum[0] = 0;
+    imu->accsum[1] = 0;
+    imu->accsum[2] = 0;
     *difftime = (float)(imu->timestamp - imu->reftime) / 1e9;
     imu->reftime = imu->timestamp;
     pthread_mutex_unlock(&imu->mutex);

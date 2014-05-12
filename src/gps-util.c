@@ -18,6 +18,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <math.h>
 
 #include <png.h>
 
@@ -27,7 +28,7 @@
 /* I/O Buffer size */
 #define BUFFER_SIZE     256
 
-struct waypoint_node *gps_util_load_datafile(const char *filename)
+struct waypoint_node *gps_util_load_datafile(const char *filename, struct dem *dem)
 {
     DEBUG("gps_util_load_datafile");
     assert(filename != 0);
@@ -57,13 +58,32 @@ struct waypoint_node *gps_util_load_datafile(const char *filename)
             assert(node != 0);
 
             // Parse line
-            if(sscanf(str, "%lf, %lf, %f, %32[^\n]", &node->lat, &node->lon, &node->alt, node->name) != 4)
+            if(sscanf(str, "%lf, %lf, %f, %32[^\n]", &node->lat, &node->lon, &node->alt, node->name) == 4)
             {
-                WARN("Parse error");
-                free(node);
-                continue;
+                node->lat = node->lat / 180.0 * M_PI;
+                node->lon = node->lon / 180.0 * M_PI;
+            }
+            else
+            {
+                if(sscanf(str, "%lf, %lf, GND, %32[^\n]", &node->lat, &node->lon, node->name) == 3)
+                {
+                    node->lat = node->lat / 180.0 * M_PI;
+                    node->lon = node->lon / 180.0 * M_PI;
+                    if(dem)
+                    {
+                        node->alt = gps_util_dem_get_alt(dem, node->lat, node->lon);
+                    }
+                    else node->alt = 0;
+                }
+                else
+                {
+                    WARN("Parse error");
+                    free(node);
+                    continue;
+                }
             }
 
+            INFO("New landmark, lat = %lf, lon = %lf, alt = %f, name = %s", node->lat, node->lon, node->alt, node->name);
             node->label = NULL;
             node->next = NULL;
             if(node_prev)

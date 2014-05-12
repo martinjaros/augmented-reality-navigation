@@ -1,14 +1,10 @@
 # Encoding ISO/IEC 8859-1
-# Test landmarks (lat[rad], lon[rad], alt[m], name)
-25e-5, 1e-5, 0, testA
-50e-5, -1e-5, 100, testB
-75e-5, 1e-5, 200, testC
-100e-5, -1e-5, 300, testD
-125e-5, 1e-5, 400, testE
-150e-5, -1e-5, -100, testF
-175e-5, 1e-5, -200, testG
-200e-5, -1e-5, -300, testH
-225e-5, 1e-5, -400, testI
-250e-5, -10e-5, 0, testJ
-275e-5, 20e-5, 0, testK
-300e-5, -30e-5, 0, testL
+# Test landmarks (lat[deg], lon[deg], alt[m], name)
+49.271277, 16.596036, GND, Brno-Jehnice
+49.254109, 16.621749, GND, Soběšice
+49.247302, 16.671896, GND, Bílovice nad Svitavou
+49.263996, 16.713953, GND, Kanice
+49.254137, 16.735239, GND, Ochoz u Brna
+49.257554, 16.693590, GND, Řícmanice
+49.282588, 16.695242, GND, Babice nad Svitavou
+49.287515, 16.632557, GND, Brno-Útěchov

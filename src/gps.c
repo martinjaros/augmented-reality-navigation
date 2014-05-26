@@ -312,17 +312,20 @@ gps_t *gps_init(const char *device, const struct gps_config *config)
         return NULL;
     }
 
-    struct termios tty;
-    bzero(&tty, sizeof(tty));
-    tty.c_iflag = 0;
-    tty.c_oflag = 0;
-    tty.c_cflag = CS8 | CREAD | CLOCAL;
-    tty.c_lflag = ICANON;
-
-    // Set attributes
-    if(cfsetospeed(&tty, B9600) || cfsetispeed(&tty, B9600) || tcsetattr(gps->fd, TCSANOW, &tty))
+    if(config->baudrate != B0)
     {
-        WARN("Failed to set attributes");
+        struct termios tty;
+        bzero(&tty, sizeof(tty));
+        tty.c_iflag = 0;
+        tty.c_oflag = 0;
+        tty.c_cflag = CS8 | CREAD | CLOCAL;
+        tty.c_lflag = ICANON;
+
+        // Set attributes
+        if(cfsetospeed(&tty, config->baudrate) || cfsetispeed(&tty, config->baudrate) || tcsetattr(gps->fd, TCSANOW, &tty))
+        {
+            WARN("Failed to set attributes");
+        }
     }
 
     gps->config = config;
@@ -399,8 +402,8 @@ void *gps_get_projection_label(gps_t *gps, float *hangle, float *vangle, float *
     // Calculate projection angle
     float hangle_tmp = atan2(dlon, dlat) - att[2];
     float vangle_tmp = atan(dalt / dist_tmp) + att[1];
-    float cosz = cos(-att[0]);
-    float sinz = sin(-att[0]);
+    float cosz = cos(att[0]);
+    float sinz = sin(att[0]);
 
     // Reset to <-pi;pi> interval and rotate
     hangle_tmp = hangle_tmp < M_PI ? hangle_tmp : hangle_tmp - 2 * M_PI;

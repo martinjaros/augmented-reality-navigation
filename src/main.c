@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <termios.h>
 
 #include "debug.h"
 #include "application.h"
@@ -107,6 +108,7 @@ int main(int argc, char *argv[])
 
                 // Parse line
                 char *interlace = NULL;
+                int baudrate = 0;
                 if(sscanf(str, "app_landmarks_file = %ms", &cfg.gps_conf.datafile) != 1)
                 if(sscanf(str, "app_landmark_vis_dist = %f", &cfg.app_landmark_vis_dist) != 1)
                 if(sscanf(str, "window_width = %u", &cfg.window_width) != 1)
@@ -136,9 +138,40 @@ int main(int argc, char *argv[])
                 if(sscanf(str, "gps_dem_right = %lf", &cfg.gps_conf.dem_right) != 1)
                 if(sscanf(str, "gps_dem_bottom = %lf", &cfg.gps_conf.dem_bottom) != 1)
                 if(sscanf(str, "gps_dem_pixel_scale = %f", &cfg.gps_conf.dem_pixel_scale) != 1)
+                if(sscanf(str, "gps_baudrate = %d", &baudrate) != 1)
                 {
                     WARN("Unknown parameter or parse error");
                     continue;
+                }
+
+                switch(baudrate)
+                {
+                    case 4800:
+                        cfg.gps_conf.baudrate = B4800;
+                        break;
+
+                    case 9600:
+                        cfg.gps_conf.baudrate = B9600;
+                        break;
+
+                    case 19200:
+                        cfg.gps_conf.baudrate = B19200;
+                        break;
+
+                    case 38400:
+                        cfg.gps_conf.baudrate = B38400;
+                        break;
+
+                    case 57600:
+                        cfg.gps_conf.baudrate = B57600;
+                        break;
+
+                    case 115200:
+                        cfg.gps_conf.baudrate = B115200;
+                        break;
+
+                    default:
+                        cfg.gps_conf.baudrate = B0;
                 }
 
                 if(interlace)

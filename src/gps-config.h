@@ -28,6 +28,11 @@
 struct gps_config
 {
     /**
+     * @brief Baudrate (termios enumeration type)
+     */
+    unsigned int baudrate;
+
+    /**
      * @brief Digital elevation model file name
      */
     char *dem_file;

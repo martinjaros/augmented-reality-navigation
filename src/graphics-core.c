@@ -49,6 +49,8 @@
 "  gl_FragColor = texture2D(tex, texpos) * mask + color;\n" \
 "}\n"
 
+#define LINE_WIDTH 3
+
 static GLuint shader_compile(GLenum type, const GLchar *source, GLint length)
 {
     // Compile shader
@@ -184,6 +186,9 @@ graphics_t *graphics_init(uint32_t window)
     // Enable blending
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // Set line width
+    glLineWidth(LINE_WIDTH);
 
     // Get surface dimensions
     if(!eglQuerySurface(g->display, g->surface, EGL_WIDTH, &g->width) ||

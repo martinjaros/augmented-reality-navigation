@@ -27,16 +27,16 @@
 #include "graphics-priv.h"
 
 /* Number of dashes on the horizon line (odd number) */
-#define HORIZON_DASH_NUM        51
+#define HORIZON_DASH_NUM        41
 
 /* Length of the horizon line */
 #define HORIZON_LENGTH_REL      .5
 
 /* Number of labels on compass tape */
-#define COMPASS_LABEL_NUM       12
+#define COMPASS_LABEL_NUM       24
 
 /* Number of steps on compass tape */
-#define COMPASS_STEP_NUM        36
+#define COMPASS_STEP_NUM        48
 
 /* Compass tape height */
 #define COMPASS_HEIGHT          10
@@ -50,6 +50,7 @@
 struct _hud
 {
     float hfov, vfov;
+    uint32_t font_size;
     drawable_t *horizon_line, *horizon_alt, *track_marker, *bearing_marker, *compass_lines, *compass_labels[COMPASS_LABEL_NUM];
     drawable_t *speed_label, *altitude_label, *waypoint_label;
     graphics_t *g;
@@ -86,10 +87,10 @@ static drawable_t *horizon_create(graphics_t *g, uint8_t color[4])
     // Generate geometry
     GLfloat array[] =
     {
-        -HORIZON_LENGTH_REL - 0.005, -0.02, -2, 0,
+        -HORIZON_LENGTH_REL - 0.02, -0.04, -2, 0,
         -HORIZON_LENGTH_REL, 0, 0, 0,
         HORIZON_LENGTH_REL, 0, HORIZON_DASH_NUM, 0,
-        HORIZON_LENGTH_REL + 0.005, -0.02, HORIZON_DASH_NUM + 2
+        HORIZON_LENGTH_REL + 0.02, -0.04, HORIZON_DASH_NUM + 2
     };
     glGenBuffers(1, &(d->vbo));
     glBindBuffer(GL_ARRAY_BUFFER, d->vbo);
@@ -272,6 +273,7 @@ hud_t *graphics_hud_create(graphics_t *g, atlas_t *atlas, uint8_t color[4], uint
     hud->g = g;
     hud->hfov = hfov;
     hud->vfov = vfov;
+    hud->font_size = font_size;
     hud->horizon_line = horizon_create(g, color);
     hud->horizon_alt = horizon_alt_create(g, color);
     hud->compass_lines = compass_create(g, color, hfov);
@@ -356,9 +358,9 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
         graphics_draw(hud->g, hud->horizon_line, hud->g->width / 2, (float)hud->g->height / 2 + (float)hud->g->height * vangle / hud->vfov, 1, -attitude[0]);
 
     // Draw compass lines
-    graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * attitude[2] / hud->hfov, hud->g->height - 30, 1, 0);
-    if(attitude[2] < hud->hfov / 2) graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * (attitude[2] + 2 * M_PI)  / hud->hfov, hud->g->height - 30, 1, 0);
-    if(attitude[2] > 2 * M_PI - hud->hfov / 2) graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * (attitude[2] - 2 * M_PI) / hud->hfov, hud->g->height - 30, 1, 0);
+    graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * attitude[2] / hud->hfov, hud->g->height - hud->font_size - 10, 1, 0);
+    if(attitude[2] < hud->hfov / 2) graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * (attitude[2] + 2 * M_PI)  / hud->hfov, hud->g->height - hud->font_size - 10, 1, 0);
+    if(attitude[2] > 2 * M_PI - hud->hfov / 2) graphics_draw(hud->g, hud->compass_lines, (float)hud->g->width / 2 - (float)hud->g->width * (attitude[2] - 2 * M_PI) / hud->hfov, hud->g->height - hud->font_size - 10, 1, 0);
 
     // Draw compass labels
     int i;
@@ -377,7 +379,7 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
     hangle = hangle > -M_PI ? hangle : hangle + 2 * M_PI;
     if(hangle < hud->hfov / -2.0) hangle = hud->hfov / -2.0;
     if(hangle > hud->hfov / 2.0) hangle = hud->hfov / 2.0;
-    graphics_draw(hud->g, hud->track_marker, (float)hud->g->width / 2 + (float)hud->g->width * hangle / hud->hfov, hud->g->height - 32, 1, 0);
+    graphics_draw(hud->g, hud->track_marker, (float)hud->g->width / 2 + (float)hud->g->width * hangle / hud->hfov, hud->g->height - hud->font_size - 12, 1, 0);
 
     // Draw bearing marker
     hangle = bearing - attitude[2];
@@ -385,7 +387,7 @@ void graphics_hud_draw(hud_t *hud, float attitude[3], float speed, float altitud
     hangle = hangle > -M_PI ? hangle : hangle + 2 * M_PI;
     if(hangle < hud->hfov / -2.0) hangle = hud->hfov / -2.0;
     if(hangle > hud->hfov / 2.0) hangle = hud->hfov / 2.0;
-    graphics_draw(hud->g, hud->bearing_marker, (float)hud->g->width / 2 + (float)hud->g->width * hangle / hud->hfov, hud->g->height - 30, 1, 0);
+    graphics_draw(hud->g, hud->bearing_marker, (float)hud->g->width / 2 + (float)hud->g->width * hangle / hud->hfov, hud->g->height - hud->font_size - 10, 1, 0);
 }
 
 void graphics_hud_free(hud_t *hud)
